@@ -1,0 +1,6 @@
+pymupdf
+pymupdf4llm
+tiktoken
+openai
+tqdm
+pymongo

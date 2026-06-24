@@ -1,0 +1,26 @@
+# OS
+.DS_Store
+
+# Node / frontend
+node_modules/
+dist/
+
+# Tauri / Rust
+src-tauri/target/
+src-tauri/gen/
+
+# Python
+medical_rag_project/venv/
+__pycache__/
+*.py[cod]
+
+# Secrets
+.env
+*.env
+medical_rag_project/.env
+
+# Data (PDFs, embeddings, generated chunks) — source code only
+medical_rag_project/data/
+
+# Tooling
+.projectradar.json

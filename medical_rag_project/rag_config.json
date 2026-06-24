@@ -1,0 +1,23 @@
+{
+  "active": "ACS",
+  "projects": [
+    "default",
+    "CCS",
+    "Valvular",
+    "ACS"
+  ],
+  "project_meta": {
+    "CCS": {
+      "year": "2024"
+    },
+    "CCS2024": {
+      "year": "2024"
+    },
+    "Valvular": {
+      "year": "2025"
+    },
+    "ACS": {
+      "year": "2023"
+    }
+  }
+}
