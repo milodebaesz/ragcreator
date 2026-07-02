@@ -77,6 +77,8 @@ pub struct ChunkMetadata {
     pub references: Vec<String>,
     #[serde(default)]
     pub ref_ids: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub approved: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -437,13 +439,17 @@ pub fn get_chunks(
     project: String,
     page: usize,
     page_size: usize,
+    approved_filter: Option<bool>,
 ) -> Result<ChunksPage, String> {
     let path = project_data_dir(&state, &project).join("rag_chunks.json");
     if !path.exists() {
         return Ok(ChunksPage { items: vec![], total: 0 });
     }
     let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let all: Vec<Chunk> = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    let mut all: Vec<Chunk> = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    if let Some(want) = approved_filter {
+        all.retain(|c| c.metadata.approved == want);
+    }
     let total = all.len();
     let items = all.into_iter().skip(page * page_size).take(page_size).collect();
     Ok(ChunksPage { items, total })

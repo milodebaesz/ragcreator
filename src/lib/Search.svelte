@@ -316,18 +316,19 @@
 
   .badge {
     display: inline-block;
-    padding: 2px 7px;
-    border-radius: 3px;
-    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 12px;
     font-weight: 700;
+    letter-spacing: .02em;
     font-family: var(--mono);
   }
-  .class1  { background: rgba(92,157,118,.15);  color: #86bb9b; }
-  .class2a { background: rgba(201,165,61,.15);  color: #d3b869; }
-  .class2b { background: rgba(201,144,63,.15);  color: var(--accent-h); }
-  .class3  { background: rgba(200,96,78,.15);   color: #d6897b; }
-  .neutral { background: var(--bg-hover); color: var(--text-2); }
-  .ev      { background: var(--accent-dim); color: var(--accent-h); }
+  .class1  { background: #3f7a56; color: #f0faf4; }
+  .class2a { background: #a67f2e; color: #fffaf0; }
+  .class2b { background: #b5732a; color: #fff6ee; }
+  .class3  { background: #a8453a; color: #fff1ef; }
+  .neutral { background: var(--bg-hover); color: var(--text-1); }
+  .ev      { background: var(--accent); color: #fff; }
 
   .tag {
     font-size: 11px;

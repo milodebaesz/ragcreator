@@ -10,6 +10,7 @@
   let total = 0
   let items = []
   let loading = false
+  let onlyUnapproved = false
 
   let editingId = null
   let draft = null
@@ -31,6 +32,7 @@
         project: $activeProject,
         page,
         pageSize: PAGE_SIZE,
+        approvedFilter: onlyUnapproved ? false : null,
       })
       items = res.items
       total = res.total
@@ -39,6 +41,32 @@
       items = []
     } finally {
       loading = false
+    }
+  }
+
+  function setFilter(unapprovedOnly) {
+    if (onlyUnapproved === unapprovedOnly) return
+    onlyUnapproved = unapprovedOnly
+    page = 0
+    load()
+  }
+
+  async function toggleApproved(chunk, event) {
+    event.stopPropagation()
+    const updated = { ...chunk, metadata: { ...chunk.metadata, approved: !chunk.metadata.approved } }
+    try {
+      await invoke('save_chunk', { project: $activeProject, chunk: updated })
+      if (onlyUnapproved && updated.metadata.approved) {
+        // No longer matches the "niet geaccordeerd" filter — drop it from view.
+        items = items.filter(c => c.id !== chunk.id)
+        total = Math.max(0, total - 1)
+      } else {
+        const idx = items.findIndex(c => c.id === chunk.id)
+        if (idx >= 0) items[idx] = updated
+        items = items
+      }
+    } catch (e) {
+      console.error(e)
     }
   }
 
@@ -77,6 +105,7 @@
       refIds: (m.ref_ids ?? []).join(', '),
       references: m.references ?? [],
       chunkType: m.chunk_type ?? 'recommendation',
+      approved: m.approved ?? false,
     }
   }
 
@@ -116,6 +145,7 @@
         year: '',
         references: [],
         ref_ids: [],
+        approved: false,
       },
     }
     items = [blank, ...items]
@@ -144,6 +174,7 @@
           .map(s => s.trim())
           .filter(s => s.length > 0 && !isNaN(Number(s)))
           .map(Number),
+        approved: draft.approved,
       },
     }
   }
@@ -155,9 +186,14 @@
     try {
       const chunk = draftToChunk()
       await invoke('save_chunk', { project: $activeProject, chunk })
-      const idx = items.findIndex(c => c.id === chunk.id)
-      if (idx >= 0) items[idx] = chunk
-      items = items
+      if (onlyUnapproved && chunk.metadata.approved) {
+        items = items.filter(c => c.id !== chunk.id)
+        total = Math.max(0, total - 1)
+      } else {
+        const idx = items.findIndex(c => c.id === chunk.id)
+        if (idx >= 0) items[idx] = chunk
+        items = items
+      }
       closeEditor()
     } catch (e) {
       errMsg = String(e)
@@ -195,6 +231,12 @@
     {#if total > 0}
       <span class="total-badge">{total} aanbevelingen</span>
     {/if}
+
+    <div class="filter-toggle">
+      <button class="filter-opt" class:active={!onlyUnapproved} on:click={() => setFilter(false)}>Alles</button>
+      <button class="filter-opt" class:active={onlyUnapproved} on:click={() => setFilter(true)}>Niet geaccordeerd</button>
+    </div>
+
     <button class="btn-add" on:click={addNew} disabled={!$activeProject}>+ Nieuwe aanbeveling</button>
   </div>
 
@@ -203,7 +245,11 @@
   {:else if items.length === 0}
     <div class="empty-state">
       <div class="empty-icon">◈</div>
-      <p>Geen chunks gevonden. Voer stap 2 uit om aanbevelingen te extraheren.</p>
+      {#if onlyUnapproved}
+        <p>Alles is geaccordeerd. Niets meer te reviewen op deze pagina.</p>
+      {:else}
+        <p>Geen chunks gevonden. Voer stap 2 uit om aanbevelingen te extraheren.</p>
+      {/if}
     </div>
   {:else}
     <!-- Table -->
@@ -211,6 +257,7 @@
       <table class="chunk-table">
         <thead>
           <tr>
+            <th class="col-check">Ok</th>
             <th class="col-id">#</th>
             <th class="col-class">Klasse</th>
             <th class="col-ev">Ev.</th>
@@ -226,8 +273,17 @@
             <tr
               class="chunk-row"
               class:expanded-row={editingId === chunk.id}
+              class:approved-row={chunk.metadata.approved}
               on:click={() => toggleRow(chunk)}
             >
+              <td class="col-check">
+                <!-- svelte-ignore a11y-click-events-have-key-events -->
+                <!-- svelte-ignore a11y-no-static-element-interactions -->
+                <span class="approve-check" class:checked={chunk.metadata.approved}
+                  on:click={(e) => toggleApproved(chunk, e)}
+                  title={chunk.metadata.approved ? 'Geaccordeerd — klik om ongedaan te maken' : 'Markeer als geaccordeerd'}
+                >{chunk.metadata.approved ? '✓' : ''}</span>
+              </td>
               <td class="col-id mono">{chunk.id}</td>
               <td class="col-class">
                 {#if chunk.metadata.class}
@@ -250,7 +306,7 @@
 
             {#if editingId === chunk.id && draft}
               <tr class="detail-row">
-                <td colspan="6">
+                <td colspan="7">
                   <!-- svelte-ignore a11y-click-events-have-key-events -->
                   <!-- svelte-ignore a11y-no-static-element-interactions -->
                   <div class="edit-panel" on:click|stopPropagation>
@@ -301,6 +357,11 @@
                       <span class="detail-label">Sectie</span>
                       <span class="detail-val">{draft.section || '—'}</span>
                     </div>
+
+                    <label class="approve-field">
+                      <input type="checkbox" bind:checked={draft.approved} />
+                      Geaccordeerd
+                    </label>
 
                     {#if draft.references?.length > 0}
                       <div class="detail-section">
@@ -392,6 +453,23 @@
   .btn-add:hover:not(:disabled) { background: var(--accent-dim); color: var(--accent-h); border-color: var(--accent); }
   .btn-add:disabled { opacity: .4; cursor: not-allowed; }
 
+  .filter-toggle {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .filter-opt {
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-2);
+    transition: background .12s, color .12s;
+  }
+  .filter-opt + .filter-opt { border-left: 1px solid var(--border); }
+  .filter-opt:hover  { background: var(--bg-hover); }
+  .filter-opt.active { background: var(--accent); color: #fff; }
+
   .loading-state, .empty-state {
     flex: 1;
     display: flex;
@@ -440,15 +518,37 @@
   }
   .chunk-row:hover        { background: var(--bg-hover); }
   .chunk-row.expanded-row { background: var(--accent-dim); }
+  .chunk-row.approved-row { opacity: .55; }
+  .chunk-row.approved-row:hover,
+  .chunk-row.approved-row.expanded-row { opacity: 1; }
+
+  .approve-check {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px; height: 20px;
+    margin: 0 auto;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    transition: background .12s, border-color .12s;
+  }
+  .approve-check:hover   { border-color: var(--success); }
+  .approve-check.checked { background: var(--success); border-color: var(--success); }
 
   td {
     padding: 9px 12px;
     vertical-align: middle;
   }
 
+  .col-check   { width: 40px; text-align: center; }
   .col-id      { width: 80px; }
-  .col-class   { width: 80px; }
-  .col-ev      { width: 50px; }
+  .col-class   { width: 90px; }
+  .col-ev      { width: 60px; }
   .col-disease { width: 80px; }
   .col-topic   { width: 110px; }
   .col-text    { }
@@ -466,21 +566,22 @@
   /* Badges */
   .badge {
     display: inline-block;
-    padding: 2px 6px;
-    border-radius: 3px;
-    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 12px;
     font-weight: 700;
+    letter-spacing: .02em;
     font-family: var(--mono);
   }
-  .class1  { background: rgba(92,157,118,.15);  color: #86bb9b; }
-  .class2a { background: rgba(201,165,61,.15);  color: #d3b869; }
-  .class2b { background: rgba(201,144,63,.15);  color: var(--accent-h); }
-  .class3  { background: rgba(200,96,78,.15);   color: #d6897b; }
-  .neutral { background: var(--bg-hover);       color: var(--text-2); }
-  .ev-a    { background: var(--accent-dim);     color: var(--accent-h); }
-  .ev-b    { background: rgba(94,138,158,.15);  color: #8ab2c6; }
-  .ev-c    { background: rgba(164,157,171,.12); color: var(--text-2); }
-  .ev-nr   { background: var(--bg-hover); color: var(--text-3); }
+  .class1  { background: #3f7a56; color: #f0faf4; }
+  .class2a { background: #a67f2e; color: #fffaf0; }
+  .class2b { background: #b5732a; color: #fff6ee; }
+  .class3  { background: #a8453a; color: #fff1ef; }
+  .neutral { background: var(--bg-hover);       color: var(--text-1); }
+  .ev-a    { background: var(--accent);         color: #fff; }
+  .ev-b    { background: #3d6a80;               color: #eaf7fc; }
+  .ev-c    { background: #5c5566;               color: #f2eff5; }
+  .ev-nr   { background: var(--bg-hover); color: var(--text-2); }
 
   /* Detail / edit row */
   .detail-row td  { padding: 0; }
@@ -519,6 +620,13 @@
   }
 
   .edit-meta { display: flex; align-items: baseline; gap: 8px; }
+
+  .approve-field {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 600; color: var(--text-1);
+    cursor: pointer;
+  }
+  .approve-field input { width: 16px; height: 16px; accent-color: var(--success); cursor: pointer; }
 
   .detail-section { display: flex; flex-direction: column; gap: 4px; }
   .detail-label   { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
