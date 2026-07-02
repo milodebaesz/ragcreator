@@ -132,8 +132,9 @@ def parse_reference_section(markdown: str) -> dict[int, str]:
 
     Handles multi-line reference entries. Cleans up markdown formatting.
     """
+    # Matches "## References", "## **25. References**", "## 25 References", etc.
     ref_heading = re.search(
-        r"^#{1,4}\s+References?\s*$",
+        r"^#{1,4}\s+\**\s*(?:\d+\.?\s*)?References?\s*\**\s*$",
         markdown, re.MULTILINE | re.IGNORECASE,
     )
     if not ref_heading:
@@ -172,6 +173,51 @@ def _parse_ref_ids(cit_str: str) -> list[int]:
         elif part.isdigit():
             ids.append(int(part))
     return ids
+
+
+SUP_RE = re.compile(r"<sup>(.*?)</sup>", re.DOTALL)
+_SUPERSCRIPT_DIGITS = str.maketrans("0123456789+-", "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻")
+
+
+def _strip_sup_tags(text: str) -> tuple[str, list[int]]:
+    """Remove <sup>...</sup> markup that pymupdf4llm leaves in for citations.
+
+    ESC/ACC guidelines mark citations with superscript numbers, e.g.
+    "...ineligible for surgery.<sup>264,265,268,269</sup>" or inline as
+    "diseases,<sup>5</sup> chronic coronary syndrome,<sup>6</sup>". These
+    aren't caught by CITATION_SUFFIX_RE (which only matches bare trailing
+    digits) and were leaking into recommendation text verbatim.
+
+    - A superscript that's a digit list (citation numbers) is cut out and
+      its numbers are returned as extra ref ids.
+    - A superscript preceded by a letter (e.g. "cm<sup>2</sup>") is a unit
+      exponent — kept, rendered as a real Unicode superscript.
+    - Anything else (footnote letters like <sup>d</sup>) references a table
+      footnote that isn't captured elsewhere, so it's just dropped.
+    """
+    extra_ref_ids: list[int] = []
+
+    def repl(m: re.Match) -> str:
+        start = m.start()
+        j = start - 1
+        while j >= 0 and text[j] == "*":  # skip markdown bold markers
+            j -= 1
+        preceding = text[j] if j >= 0 else ""
+        content = re.sub(r"[*\s]", "", m.group(1))
+
+        if preceding.isalpha():
+            if content and all(ch in "0123456789+-" for ch in content):
+                return content.translate(_SUPERSCRIPT_DIGITS)
+            return content
+
+        if content and re.fullmatch(r"[\d,–\-]+", content):
+            extra_ref_ids.extend(_parse_ref_ids(content))
+            return ""
+
+        return ""  # footnote-letter marker — not resolvable, drop it
+
+    cleaned = SUP_RE.sub(repl, text)
+    return cleaned, extra_ref_ids
 
 
 def find_preceding_title(body: str, pos: int) -> str:
@@ -247,6 +293,12 @@ def extract_recommendations(
 
             raw_text = re.sub(r"\s*<br\s*/?>\s*", " ", match.group(1)).strip()
             raw_text = re.sub(r"\s+", " ", raw_text).strip("|").strip()
+
+            # Strip <sup>citation</sup> markup left by the PDF conversion before
+            # the trailing-suffix check below, which only matches bare digits.
+            raw_text, sup_ref_ids = _strip_sup_tags(raw_text)
+            raw_text = re.sub(r"\s+", " ", raw_text).strip()
+
             if len(raw_text) < 20 or raw_text in seen:
                 continue
             seen.add(raw_text)
@@ -259,6 +311,7 @@ def extract_recommendations(
             else:
                 clean_text = raw_text
                 ref_ids = []
+            ref_ids = sorted(set(ref_ids) | set(sup_ref_ids))
             references = [ref_dict[i] for i in ref_ids if i in ref_dict]
 
             # Prepend table title for richer context (used by embeddings / RAG)
@@ -289,7 +342,8 @@ def extract_recommendations(
             class_match = REC_CLASS_RE.search(block)
             if not class_match:
                 continue
-            text = block.strip()
+            text, ref_ids = _strip_sup_tags(block.strip())
+            text = re.sub(r"\s+", " ", text).strip()
             if len(text) < 30 or text in seen:
                 continue
             seen.add(text)
@@ -311,6 +365,8 @@ def extract_recommendations(
                     "section": heading,
                     "guideline": guideline,
                     "year": year,
+                    "ref_ids": ref_ids,
+                    "references": [ref_dict[i] for i in ref_ids if i in ref_dict],
                 },
             })
 
