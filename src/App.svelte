@@ -152,7 +152,7 @@
     color: inherit;
   }
 
-  :global(input, textarea) {
+  :global(input, textarea, select) {
     font: inherit;
     color: var(--text-1);
     background: var(--bg-base);
@@ -162,7 +162,12 @@
     outline: none;
     transition: border-color .15s;
   }
-  :global(input:focus, textarea:focus) { border-color: var(--accent); }
+  :global(input:focus, textarea:focus, select:focus) { border-color: var(--accent); }
+  :global(select) { cursor: pointer; }
+  :global(select option) {
+    color: var(--text-1);
+    background: var(--bg-card);
+  }
 
   :global(::-webkit-scrollbar)       { width: 6px; height: 6px; }
   :global(::-webkit-scrollbar-track) { background: transparent; }
