@@ -69,6 +69,8 @@ pub struct ChunkMetadata {
     pub disease: Option<String>,
     pub topic: Option<String>,
     pub section: Option<String>,
+    #[serde(default)]
+    pub table_title: Option<String>,
     pub guideline: Option<String>,
     pub year: Option<String>,
     #[serde(default)]
@@ -493,6 +495,47 @@ pub fn search_chunks(
         .collect();
 
     Ok(results)
+}
+
+#[tauri::command]
+pub fn save_chunk(
+    state: State<AppState>,
+    project: String,
+    chunk: Chunk,
+) -> Result<(), String> {
+    let path = project_data_dir(&state, &project).join("rag_chunks.json");
+    let mut all: Vec<Chunk> = if path.exists() {
+        let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        serde_json::from_str(&text).map_err(|e| e.to_string())?
+    } else {
+        vec![]
+    };
+
+    match all.iter_mut().find(|c| c.id == chunk.id) {
+        Some(existing) => *existing = chunk,
+        None => all.push(chunk),
+    }
+
+    let text = serde_json::to_string_pretty(&all).map_err(|e| e.to_string())?;
+    std::fs::write(&path, text).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_chunk(
+    state: State<AppState>,
+    project: String,
+    id: String,
+) -> Result<(), String> {
+    let path = project_data_dir(&state, &project).join("rag_chunks.json");
+    if !path.exists() {
+        return Ok(());
+    }
+    let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let mut all: Vec<Chunk> = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    all.retain(|c| c.id != id);
+
+    let text = serde_json::to_string_pretty(&all).map_err(|e| e.to_string())?;
+    std::fs::write(&path, text).map_err(|e| e.to_string())
 }
 
 // ── Commands: file dialog ─────────────────────────────────────────────────────

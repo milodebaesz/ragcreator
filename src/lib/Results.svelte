@@ -1,15 +1,22 @@
 <script>
-  import { onMount } from 'svelte'
   import { invoke } from '@tauri-apps/api/core'
   import { activeProject } from './stores.js'
 
   const PAGE_SIZE = 25
+  const REC_CLASSES = ['Class I', 'Class IIa', 'Class IIb', 'Class III']
+  const EVIDENCE_LEVELS = ['A', 'B', 'C', 'NR']
 
   let page  = 0
   let total = 0
   let items = []
   let loading = false
-  let expanded = null
+
+  let editingId = null
+  let draft = null
+  let saving = false
+  let deleting = false
+  let confirmingDelete = false
+  let errMsg = ''
 
   $: totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
@@ -18,7 +25,7 @@
   async function load() {
     if (!$activeProject) return
     loading = true
-    expanded = null
+    closeEditor()
     try {
       const res = await invoke('get_chunks', {
         project: $activeProject,
@@ -53,6 +60,132 @@
     if (ev === 'C') return 'ev-c'
     return 'ev-nr'
   }
+
+  function toDraft(chunk) {
+    const m = chunk.metadata ?? {}
+    return {
+      id: chunk.id,
+      text: chunk.text ?? '',
+      class: m.class ?? '',
+      evidence: m.evidence ?? '',
+      disease: m.disease ?? '',
+      topic: m.topic ?? '',
+      section: m.section ?? '',
+      tableTitle: m.table_title ?? '',
+      guideline: m.guideline ?? '',
+      year: m.year ?? '',
+      refIds: (m.ref_ids ?? []).join(', '),
+      references: m.references ?? [],
+      chunkType: m.chunk_type ?? 'recommendation',
+    }
+  }
+
+  function toggleRow(chunk) {
+    errMsg = ''
+    confirmingDelete = false
+    if (editingId === chunk.id) {
+      closeEditor()
+    } else {
+      editingId = chunk.id
+      draft = toDraft(chunk)
+    }
+  }
+
+  function closeEditor() {
+    editingId = null
+    draft = null
+    errMsg = ''
+    confirmingDelete = false
+  }
+
+  function addNew() {
+    errMsg = ''
+    const id = `rec_manual_${Date.now()}`
+    const blank = {
+      id,
+      text: '',
+      metadata: {
+        type: 'recommendation',
+        class: 'Class I',
+        evidence: 'A',
+        disease: 'general',
+        topic: 'general',
+        section: '',
+        table_title: '',
+        guideline: '',
+        year: '',
+        references: [],
+        ref_ids: [],
+      },
+    }
+    items = [blank, ...items]
+    total += 1
+    editingId = id
+    draft = toDraft(blank)
+  }
+
+  function draftToChunk() {
+    return {
+      id: draft.id,
+      text: draft.text.trim(),
+      metadata: {
+        type: draft.chunkType,
+        class: draft.class || null,
+        evidence: draft.evidence || null,
+        disease: draft.disease || null,
+        topic: draft.topic || null,
+        section: draft.section || null,
+        table_title: draft.tableTitle || null,
+        guideline: draft.guideline || null,
+        year: draft.year || null,
+        references: draft.references,
+        ref_ids: draft.refIds
+          .split(',')
+          .map(s => s.trim())
+          .filter(s => s.length > 0 && !isNaN(Number(s)))
+          .map(Number),
+      },
+    }
+  }
+
+  async function saveDraft() {
+    if (!draft) return
+    saving = true
+    errMsg = ''
+    try {
+      const chunk = draftToChunk()
+      await invoke('save_chunk', { project: $activeProject, chunk })
+      const idx = items.findIndex(c => c.id === chunk.id)
+      if (idx >= 0) items[idx] = chunk
+      items = items
+      closeEditor()
+    } catch (e) {
+      errMsg = String(e)
+    } finally {
+      saving = false
+    }
+  }
+
+  function requestDelete() {
+    confirmingDelete = true
+  }
+
+  async function deleteDraft() {
+    if (!draft) return
+    deleting = true
+    errMsg = ''
+    try {
+      await invoke('delete_chunk', { project: $activeProject, id: draft.id })
+      items = items.filter(c => c.id !== draft.id)
+      total = Math.max(0, total - 1)
+      closeEditor()
+    } catch (e) {
+      errMsg = String(e)
+    } finally {
+      deleting = false
+      confirmingDelete = false
+    }
+  }
 </script>
 
 <div class="results">
@@ -62,6 +195,7 @@
     {#if total > 0}
       <span class="total-badge">{total} aanbevelingen</span>
     {/if}
+    <button class="btn-add" on:click={addNew} disabled={!$activeProject}>+ Nieuwe aanbeveling</button>
   </div>
 
   {#if loading}
@@ -86,11 +220,13 @@
           </tr>
         </thead>
         <tbody>
-          {#each items as chunk}
+          {#each items as chunk (chunk.id)}
+            <!-- svelte-ignore a11y-click-events-have-key-events -->
+            <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
             <tr
               class="chunk-row"
-              class:expanded-row={expanded === chunk.id}
-              on:click={() => expanded = expanded === chunk.id ? null : chunk.id}
+              class:expanded-row={editingId === chunk.id}
+              on:click={() => toggleRow(chunk)}
             >
               <td class="col-id mono">{chunk.id}</td>
               <td class="col-class">
@@ -109,34 +245,96 @@
               </td>
               <td class="col-disease tag">{chunk.metadata.disease ?? '—'}</td>
               <td class="col-topic tag">{chunk.metadata.topic ?? '—'}</td>
-              <td class="col-text truncate">{chunk.text}</td>
+              <td class="col-text truncate">{chunk.text || '(leeg)'}</td>
             </tr>
 
-            {#if expanded === chunk.id}
+            {#if editingId === chunk.id && draft}
               <tr class="detail-row">
                 <td colspan="6">
-                  <div class="detail-panel">
-                    <div class="detail-section">
+                  <!-- svelte-ignore a11y-click-events-have-key-events -->
+                  <!-- svelte-ignore a11y-no-static-element-interactions -->
+                  <div class="edit-panel" on:click|stopPropagation>
+                    <label class="edit-field stretch">
+                      <span class="edit-label">Tekst</span>
+                      <textarea class="edit-text" rows="5" bind:value={draft.text}></textarea>
+                    </label>
+
+                    {#if draft.class === 'Class III'}
+                      <p class="class3-warning">⚠ Contra-indicatie — Class III: niet aanbevolen</p>
+                    {/if}
+
+                    <div class="edit-row">
+                      <label class="edit-field">
+                        <span class="edit-label">Klasse</span>
+                        <select bind:value={draft.class}>
+                          {#each REC_CLASSES as c}<option value={c}>{c}</option>{/each}
+                        </select>
+                      </label>
+                      <label class="edit-field">
+                        <span class="edit-label">Evidence</span>
+                        <select bind:value={draft.evidence}>
+                          {#each EVIDENCE_LEVELS as e}<option value={e}>{e}</option>{/each}
+                        </select>
+                      </label>
+                      <label class="edit-field">
+                        <span class="edit-label">Ziekte</span>
+                        <input bind:value={draft.disease} />
+                      </label>
+                      <label class="edit-field">
+                        <span class="edit-label">Onderwerp</span>
+                        <input bind:value={draft.topic} />
+                      </label>
+                    </div>
+
+                    <div class="edit-row">
+                      <label class="edit-field stretch">
+                        <span class="edit-label">Tabel</span>
+                        <input bind:value={draft.tableTitle} placeholder="—" />
+                      </label>
+                      <label class="edit-field stretch">
+                        <span class="edit-label">Referentie-nrs (komma-gescheiden)</span>
+                        <input bind:value={draft.refIds} placeholder="bijv. 12, 34, 56" />
+                      </label>
+                    </div>
+
+                    <div class="edit-meta">
                       <span class="detail-label">Sectie</span>
-                      <span class="detail-val">{chunk.metadata.section ?? '—'}</span>
+                      <span class="detail-val">{draft.section || '—'}</span>
                     </div>
-                    <div class="detail-section">
-                      <span class="detail-label">Tekst</span>
-                      <p class="detail-text">{chunk.text}</p>
-                    </div>
-                    {#if chunk.metadata.references?.length > 0}
+
+                    {#if draft.references?.length > 0}
                       <div class="detail-section">
-                        <span class="detail-label">Referenties ({chunk.metadata.references.length})</span>
+                        <span class="detail-label">Opgeloste referenties ({draft.references.length})</span>
                         <ul class="ref-list">
-                          {#each chunk.metadata.references.slice(0,5) as ref}
+                          {#each draft.references.slice(0,5) as ref}
                             <li>{ref}</li>
                           {/each}
-                          {#if chunk.metadata.references.length > 5}
-                            <li class="ref-more">+{chunk.metadata.references.length - 5} meer</li>
+                          {#if draft.references.length > 5}
+                            <li class="ref-more">+{draft.references.length - 5} meer</li>
                           {/if}
                         </ul>
                       </div>
                     {/if}
+
+                    {#if errMsg}
+                      <p class="err-msg">{errMsg}</p>
+                    {/if}
+
+                    <div class="edit-actions">
+                      {#if confirmingDelete}
+                        <span class="confirm-text">Definitief verwijderen?</span>
+                        <button class="btn-ghost" on:click={() => confirmingDelete = false}>Nee</button>
+                        <button class="btn-danger" on:click={deleteDraft} disabled={deleting}>
+                          {deleting ? 'Verwijderen…' : 'Ja, verwijderen'}
+                        </button>
+                      {:else}
+                        <button class="btn-ghost" on:click={closeEditor}>Annuleren</button>
+                        <button class="btn-danger" on:click={requestDelete}>Verwijderen</button>
+                        <button class="btn-save" on:click={saveDraft} disabled={saving}>
+                          {saving ? 'Opslaan…' : 'Opslaan'}
+                        </button>
+                      {/if}
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -181,6 +379,18 @@
     font-size: 11px;
     font-weight: 600;
   }
+  .btn-add {
+    margin-left: auto;
+    padding: 7px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    font-size: 12.5px;
+    font-weight: 600;
+    transition: background .12s, color .12s, border-color .12s;
+  }
+  .btn-add:hover:not(:disabled) { background: var(--accent-dim); color: var(--accent-h); border-color: var(--accent); }
+  .btn-add:disabled { opacity: .4; cursor: not-allowed; }
 
   .loading-state, .empty-state {
     flex: 1;
@@ -272,25 +482,86 @@
   .ev-c    { background: rgba(164,157,171,.12); color: var(--text-2); }
   .ev-nr   { background: var(--bg-hover); color: var(--text-3); }
 
-  /* Detail row */
+  /* Detail / edit row */
   .detail-row td  { padding: 0; }
-  .detail-panel   {
-    padding: 16px 20px;
+  .edit-panel {
+    padding: 18px 20px;
     background: var(--bg-surface);
     border-bottom: 1px solid var(--border);
+    border-left: 2px solid var(--accent);
+    cursor: default;
     display: flex;
     flex-direction: column;
     gap: 12px;
   }
+
+  .edit-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .edit-field { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 120px; }
+  .edit-field.stretch { flex: 2; min-width: 220px; }
+  .edit-label {
+    font-size: 11px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--text-3);
+  }
+  .edit-text {
+    width: 100%; resize: vertical;
+    font-family: inherit; font-size: 13px; line-height: 1.6;
+    background: var(--bg-card);
+  }
+  .edit-field input, .edit-field select {
+    width: 100%;
+    background: var(--bg-card);
+  }
+
+  .class3-warning {
+    font-size: 12px; font-weight: 600; color: #d6897b;
+    background: var(--error-dim); border-radius: var(--radius);
+    padding: 6px 10px;
+  }
+
+  .edit-meta { display: flex; align-items: baseline; gap: 8px; }
+
   .detail-section { display: flex; flex-direction: column; gap: 4px; }
   .detail-label   { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
   .detail-val     { font-size: 13px; color: var(--text-2); }
-  .detail-text    { font-size: 13px; color: var(--text-1); line-height: 1.6; white-space: pre-wrap; }
 
   .ref-list { list-style: none; display: flex; flex-direction: column; gap: 3px; }
   .ref-list li    { font-size: 12px; color: var(--text-2); padding-left: 10px; position: relative; }
   .ref-list li::before { content: '—'; position: absolute; left: 0; color: var(--text-3); }
   .ref-more { color: var(--text-3); font-style: italic; }
+
+  .err-msg { font-size: 12px; color: #d6897b; }
+
+  .edit-actions {
+    display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 4px;
+  }
+  .confirm-text { font-size: 12.5px; color: var(--text-2); margin-right: 2px; }
+  .btn-ghost {
+    padding: 7px 14px;
+    border-radius: var(--radius);
+    color: var(--text-2);
+    transition: background .12s;
+  }
+  .btn-ghost:hover { background: var(--bg-hover); color: var(--text-1); }
+  .btn-danger {
+    padding: 7px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--error);
+    color: #d6897b;
+    font-weight: 600;
+    transition: background .12s;
+  }
+  .btn-danger:hover:not(:disabled) { background: var(--error-dim); }
+  .btn-danger:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-save {
+    padding: 7px 18px;
+    border-radius: var(--radius);
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+    transition: background .12s, opacity .12s;
+  }
+  .btn-save:hover:not(:disabled) { background: var(--accent-h); }
+  .btn-save:disabled { opacity: .5; cursor: not-allowed; }
 
   /* Pagination */
   .pagination {

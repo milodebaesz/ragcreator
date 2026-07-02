@@ -25,6 +25,8 @@ fn main() {
             commands::run_pipeline_step,
             commands::get_chunks,
             commands::search_chunks,
+            commands::save_chunk,
+            commands::delete_chunk,
             commands::pick_pdf,
             commands::get_env_config,
             commands::save_env_config,
