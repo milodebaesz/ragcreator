@@ -53,36 +53,58 @@
   let pickingPdf = false
   let refreshing = false
 
-  $: status = $projectStatus
-  $: states = $stepStates
-  $: logs   = $stepLogs
-  $: env    = $envConfig
+  $: logs = $stepLogs
 
-  function isStepEnabled(step) {
-    if (!status) return false
-    switch (step.num) {
-      case 1: return status.has_pdf
-      case 2: return status.has_markdown
-      case 3: return status.has_chunks
-      case 4: return status.has_chunks
-      case 5: return status.has_embeddings
-      default: return false
-    }
-  }
+  // Precompute all per-step view state from the stores directly (rather than
+  // reading them through closures inside the #each block). Svelte's
+  // per-block dependency tracking can't see into function calls, so deriving
+  // this here — where $projectStatus/$stepStates/$envConfig are referenced
+  // literally — is what makes the UI actually update when a step finishes.
+  $: stepRows = STEPS.map(step => {
+    const st = $projectStatus
+    const s  = $stepStates[step.num]
 
-  function stepIsDone(step) {
-    switch (step.num) {
-      case 1: return status?.has_markdown
-      case 2: return status?.has_chunks
-      case 3: return status?.has_qa
-      case 4: return status?.has_embeddings
-      case 5: return false // always re-runnable
-      default: return false
-    }
-  }
+    const done = (() => {
+      switch (step.num) {
+        case 1: return !!st?.has_markdown
+        case 2: return !!st?.has_chunks
+        case 3: return !!st?.has_qa
+        case 4: return !!st?.has_embeddings
+        case 5: return false // always re-runnable
+        default: return false
+      }
+    })()
+
+    const enabled = st ? (() => {
+      switch (step.num) {
+        case 1: return st.has_pdf
+        case 2: return st.has_markdown
+        case 3: return st.has_chunks
+        case 4: return st.has_chunks
+        case 5: return st.has_embeddings
+        default: return false
+      }
+    })() : false
+
+    const sc = s === 'running' ? 'running'
+             : s === 'done'    ? 'done'
+             : s === 'error'   ? 'error'
+             : done ? 'done' : 'idle'
+
+    const icon = s === 'running' ? '⟳'
+               : s === 'done'    ? '✓'
+               : s === 'error'   ? '✕'
+               : done ? '✓' : String(step.num)
+
+    const warn = step.needsOpenAI && !$envConfig.openai_key  ? 'OpenAI API-sleutel ontbreekt'
+               : step.needsMongo  && !$envConfig.mongodb_uri ? 'MongoDB URI ontbreekt'
+               : null
+
+    return { step, sc, icon, warn, enabled, done }
+  })
 
   async function runStep(step) {
-    if (states[step.num] === 'running') return
+    if ($stepStates[step.num] === 'running') return
     resetStepLogs(step.num)
     setStepState(step.num, 'running')
     openLogStep = step.num
@@ -91,19 +113,17 @@
       await invoke('run_pipeline_step', {
         project:    $activeProject,
         step:       step.num,
-        openaiKey:  env.openai_key  || null,
-        mongodbUri: env.mongodb_uri || null,
-        mongodbDb:  env.mongodb_db  || null,
-        mongodbColl: env.mongodb_coll || null,
+        openaiKey:  $envConfig.openai_key  || null,
+        mongodbUri: $envConfig.mongodb_uri || null,
+        mongodbDb:  $envConfig.mongodb_db  || null,
+        mongodbColl: $envConfig.mongodb_coll || null,
       })
-      // done event handled in App.svelte → setStepState
+      // Step actually finishes later — 'pipeline-done' (handled in App.svelte)
+      // sets the step state and refreshes project status when the process exits.
     } catch (e) {
       setStepState(step.num, 'error')
       appendStepLog(step.num, `FOUT: ${e}`, true)
     }
-
-    // Refresh status after step completes (small delay)
-    setTimeout(refreshStatusStore, 1200)
   }
 
   async function refreshStatusStore() {
@@ -132,49 +152,28 @@
     }
   }
 
-  function stateIcon(num) {
-    const s = states[num]
-    if (s === 'running') return '⟳'
-    if (s === 'done')    return '✓'
-    if (s === 'error')   return '✕'
-    return stepIsDone({ num }) ? '✓' : '○'
-  }
-
-  function stateClass(num) {
-    const s = states[num]
-    if (s === 'running') return 'running'
-    if (s === 'done')    return 'done'
-    if (s === 'error')   return 'error'
-    return stepIsDone({ num }) ? 'done' : 'idle'
-  }
-
-  function hasMissingKey(step) {
-    if (step.needsOpenAI && !env.openai_key)  return 'OpenAI API-sleutel ontbreekt'
-    if (step.needsMongo  && !env.mongodb_uri) return 'MongoDB URI ontbreekt'
-    return null
-  }
 </script>
 
 <div class="pipeline">
   <!-- Header row -->
   <div class="pipeline-header">
     <div class="header-left">
-      <h2 class="pipeline-title">{$activeProject}</h2>
-      {#if status}
+      <h2 class="pipeline-title serif">{$activeProject}</h2>
+      {#if $projectStatus}
         <span class="chunk-badge">
-          {status.chunk_count} chunks
+          {$projectStatus.chunk_count} chunks
         </span>
       {/if}
     </div>
     <button class="refresh-btn" on:click={refreshStatusStore} disabled={refreshing}>
-      {refreshing ? '⟳' : '↺'} Vernieuwen
+      <span class:spinning={refreshing}>↺</span> Vernieuwen
     </button>
   </div>
 
   <!-- PDF row -->
   <div class="pdf-row">
     <div class="pdf-info">
-      {#if status?.has_pdf}
+      {#if $projectStatus?.has_pdf}
         <span class="pdf-dot ok"></span>
         <span class="pdf-label">PDF gekoppeld</span>
       {:else}
@@ -183,23 +182,25 @@
       {/if}
     </div>
     <button class="btn-secondary" on:click={pickPdf} disabled={pickingPdf}>
-      {pickingPdf ? 'Kiezen…' : '📂 PDF kiezen'}
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4a1 1 0 0 1 1-1h3.5l1.2 1.4H13a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4Z" stroke="currentColor" stroke-width="1.2"/></svg>
+      {pickingPdf ? 'Kiezen…' : 'PDF kiezen'}
     </button>
   </div>
 
   <!-- Steps -->
   <div class="steps">
-    {#each STEPS as step}
-      {@const sc    = stateClass(step.num)}
-      {@const warn  = hasMissingKey(step)}
-      {@const enabled = isStepEnabled(step)}
+    {#each stepRows as row (row.step.num)}
+      {@const step    = row.step}
+      {@const sc      = row.sc}
+      {@const warn    = row.warn}
+      {@const enabled = row.enabled}
       {@const isOpen  = openLogStep === step.num}
 
       <div class="step-card" class:active={sc === 'running' || sc === 'done'}>
         <!-- Step header -->
         <div class="step-header">
           <div class="step-num-col">
-            <div class="step-bubble {sc}">{stateIcon(step.num)}</div>
+            <div class="step-bubble {sc}">{row.icon}</div>
           </div>
 
           <div class="step-meta">
@@ -225,12 +226,12 @@
             {:else}
               <button
                 class="btn-run"
-                class:secondary={stepIsDone(step)}
+                class:secondary={row.done}
                 on:click={() => runStep(step)}
                 disabled={!enabled || !!warn}
                 title={!enabled ? 'Vorige stap eerst uitvoeren' : warn ?? ''}
               >
-                {stepIsDone(step) ? '↺ Opnieuw' : '▶ Starten'}
+                {row.done ? '↺ Opnieuw' : '▶ Starten'}
               </button>
             {/if}
 
@@ -278,14 +279,18 @@
   .header-left { display: flex; align-items: center; gap: 12px; }
   .pipeline-title { font-size: 20px; font-weight: 600; }
   .chunk-badge {
-    padding: 2px 10px;
+    padding: 2px 9px;
     background: var(--accent-dim);
     color: var(--accent-h);
-    border-radius: 20px;
-    font-size: 12px;
+    border-radius: 3px;
+    font-family: var(--mono);
+    font-size: 11px;
     font-weight: 600;
   }
   .refresh-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     padding: 6px 14px;
     border-radius: var(--radius);
     border: 1px solid var(--border);
@@ -294,6 +299,7 @@
     transition: background .12s, color .12s;
   }
   .refresh-btn:hover { background: var(--bg-hover); color: var(--text-1); }
+  .refresh-btn .spinning { display: inline-block; animation: spin 1s linear infinite; }
 
   /* PDF row */
   .pdf-row {
@@ -316,6 +322,9 @@
   .missing-text    { color: var(--text-3); }
 
   .btn-secondary {
+    display: flex;
+    align-items: center;
+    gap: 7px;
     padding: 7px 14px;
     border-radius: var(--radius);
     border: 1px solid var(--border);
@@ -348,11 +357,12 @@
   /* Step bubble */
   .step-num-col { padding-top: 2px; }
   .step-bubble {
-    width: 32px; height: 32px;
-    border-radius: 50%;
+    width: 30px; height: 30px;
+    border-radius: 6px;
+    font-family: var(--mono);
     display: flex; align-items: center; justify-content: center;
-    font-size: 14px; font-weight: 700;
-    border: 2px solid var(--border);
+    font-size: 13px; font-weight: 700;
+    border: 1px solid var(--border);
     color: var(--text-3);
     flex-shrink: 0;
   }
@@ -387,12 +397,13 @@
   .step-io   { display: flex; align-items: center; gap: 6px; }
   .io-tag {
     font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 4px;
+    padding: 2px 7px;
+    border-radius: 3px;
     font-family: var(--mono);
+    border: 1px solid var(--border);
   }
-  .io-tag.in  { background: var(--bg-hover); color: var(--text-2); }
-  .io-tag.out { background: var(--accent-dim); color: var(--accent-h); }
+  .io-tag.in  { color: var(--text-2); }
+  .io-tag.out { border-color: var(--accent); color: var(--accent-h); }
   .io-arrow   { font-size: 12px; color: var(--text-3); }
   .step-desc  { font-size: 12px; color: var(--text-2); }
   .step-warn  {
@@ -450,7 +461,7 @@
 
   /* Log panel */
   .log-panel {
-    background: #0a0b14;
+    background: #100e14;
     border-top: 1px solid var(--border);
     padding: 12px 16px;
     max-height: 220px;
@@ -460,5 +471,5 @@
     line-height: 1.6;
   }
   .log-line        { color: #94a3b8; white-space: pre-wrap; word-break: break-all; }
-  .log-line.stderr { color: #fca5a5; }
+  .log-line.stderr { color: #d6897b; }
 </style>

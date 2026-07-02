@@ -58,7 +58,7 @@
 <div class="results">
   <!-- Header -->
   <div class="results-header">
-    <h2 class="results-title">Resultaten</h2>
+    <h2 class="results-title serif">Resultaten</h2>
     {#if total > 0}
       <span class="total-badge">{total} aanbevelingen</span>
     {/if}
@@ -173,11 +173,12 @@
   }
   .results-title { font-size: 20px; font-weight: 600; }
   .total-badge {
-    padding: 2px 10px;
+    padding: 2px 9px;
     background: var(--accent-dim);
     color: var(--accent-h);
-    border-radius: 20px;
-    font-size: 12px;
+    border-radius: 3px;
+    font-family: var(--mono);
+    font-size: 11px;
     font-weight: 600;
   }
 
@@ -255,20 +256,20 @@
   /* Badges */
   .badge {
     display: inline-block;
-    padding: 2px 7px;
-    border-radius: 4px;
+    padding: 2px 6px;
+    border-radius: 3px;
     font-size: 11px;
     font-weight: 700;
     font-family: var(--mono);
   }
-  .class1  { background: rgba(34,197,94,.15);  color: #4ade80; }
-  .class2a { background: rgba(250,204,21,.12); color: #fbbf24; }
-  .class2b { background: rgba(245,158,11,.12); color: #f59e0b; }
-  .class3  { background: rgba(239,68,68,.15);  color: #f87171; }
+  .class1  { background: rgba(92,157,118,.15);  color: #86bb9b; }
+  .class2a { background: rgba(201,165,61,.15);  color: #d3b869; }
+  .class2b { background: rgba(201,144,63,.15);  color: var(--accent-h); }
+  .class3  { background: rgba(200,96,78,.15);   color: #d6897b; }
   .neutral { background: var(--bg-hover);       color: var(--text-2); }
-  .ev-a    { background: rgba(99,102,241,.2);  color: var(--accent-h); }
-  .ev-b    { background: rgba(14,165,233,.15); color: #38bdf8; }
-  .ev-c    { background: rgba(148,163,184,.12); color: #94a3b8; }
+  .ev-a    { background: var(--accent-dim);     color: var(--accent-h); }
+  .ev-b    { background: rgba(94,138,158,.15);  color: #8ab2c6; }
+  .ev-c    { background: rgba(164,157,171,.12); color: var(--text-2); }
   .ev-nr   { background: var(--bg-hover); color: var(--text-3); }
 
   /* Detail row */

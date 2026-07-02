@@ -36,7 +36,7 @@
 </script>
 
 <div class="settings">
-  <h2 class="settings-title">Instellingen</h2>
+  <h2 class="settings-title serif">Instellingen</h2>
 
   <form class="settings-form" on:submit|preventDefault={save}>
 
@@ -57,8 +57,12 @@
             {:else}
               <input type="password" bind:value={form.openai_key} placeholder="sk-…" autocomplete="off" />
             {/if}
-            <button type="button" class="toggle-vis" on:click={() => showKey = !showKey}>
-              {showKey ? '🙈' : '👁'}
+            <button type="button" class="toggle-vis" on:click={() => showKey = !showKey} title={showKey ? 'Verbergen' : 'Tonen'}>
+              {#if showKey}
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 2l12 12M6.6 6.7a2 2 0 0 0 2.8 2.8M4.3 4.5C2.8 5.5 1.7 7 1.2 8c1.2 2.7 3.9 5 6.8 5 1 0 2-.3 2.9-.8M10 3.3c-.6-.2-1.3-.3-2-.3-2.9 0-5.6 2.3-6.8 5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+              {:else}
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M1.2 8C2.4 5.3 5.1 3 8 3s5.6 2.3 6.8 5c-1.2 2.7-3.9 5-6.8 5s-5.6-2.3-6.8-5Z" stroke="currentColor" stroke-width="1.2"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.2"/></svg>
+              {/if}
             </button>
           </div>
         </label>
@@ -133,17 +137,16 @@
 
   /* Sections */
   .settings-section {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 20px;
+    border-left: 2px solid var(--border);
+    padding: 2px 0 2px 18px;
     display: flex;
     flex-direction: column;
     gap: 14px;
   }
   .section-heading {
-    font-size: 14px;
+    font-size: 13.5px;
     font-weight: 600;
+    letter-spacing: .02em;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -163,7 +166,7 @@
   .field           { display: flex; flex-direction: column; gap: 6px; }
   .field.stretch   { flex: 1; }
   .field-label     { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
-  .field input     { width: 100%; background: var(--bg-surface); }
+  .field input     { width: 100%; background: var(--bg-card); }
 
   .input-wrap {
     position: relative;
@@ -188,7 +191,7 @@
     justify-content: flex-end;
     gap: 14px;
   }
-  .err-msg  { font-size: 12px; color: #fca5a5; flex: 1; }
+  .err-msg  { font-size: 12px; color: #d6897b; flex: 1; }
   .saved-msg { font-size: 13px; color: var(--success); }
   .btn-save {
     padding: 9px 24px;
@@ -204,15 +207,13 @@
 
   /* Info box */
   .info-box {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 14px 16px;
+    border-left: 2px solid var(--border);
+    padding: 2px 0 2px 18px;
     display: flex;
     flex-direction: column;
     gap: 6px;
   }
-  .info-title { font-size: 12px; font-weight: 600; color: var(--text-2); }
+  .info-title { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
   .info-text  { font-size: 12px; color: var(--text-3); line-height: 1.6; }
   .info-text code {
     font-family: var(--mono);

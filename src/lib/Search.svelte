@@ -65,7 +65,7 @@
   <!-- Search bar -->
   <div class="search-bar">
     <div class="search-input-wrap">
-      <span class="search-icon">⌕</span>
+      <svg class="search-icon" width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.3"/><path d="M13.5 13.5 10.5 10.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
       <input
         class="search-input"
         bind:value={query}
@@ -200,8 +200,7 @@
   }
   .search-icon {
     position: absolute;
-    left: 12px;
-    font-size: 18px;
+    left: 13px;
     color: var(--text-3);
     pointer-events: none;
   }
@@ -317,23 +316,23 @@
 
   .badge {
     display: inline-block;
-    padding: 2px 8px;
-    border-radius: 4px;
+    padding: 2px 7px;
+    border-radius: 3px;
     font-size: 11px;
     font-weight: 700;
     font-family: var(--mono);
   }
-  .class1  { background: rgba(34,197,94,.15);  color: #4ade80; }
-  .class2a { background: rgba(250,204,21,.12); color: #fbbf24; }
-  .class2b { background: rgba(245,158,11,.12); color: #f59e0b; }
-  .class3  { background: rgba(239,68,68,.15);  color: #f87171; }
+  .class1  { background: rgba(92,157,118,.15);  color: #86bb9b; }
+  .class2a { background: rgba(201,165,61,.15);  color: #d3b869; }
+  .class2b { background: rgba(201,144,63,.15);  color: var(--accent-h); }
+  .class3  { background: rgba(200,96,78,.15);   color: #d6897b; }
   .neutral { background: var(--bg-hover); color: var(--text-2); }
   .ev      { background: var(--accent-dim); color: var(--accent-h); }
 
   .tag {
     font-size: 11px;
     padding: 2px 7px;
-    border-radius: 4px;
+    border-radius: 3px;
     background: var(--bg-hover);
     color: var(--text-3);
   }
@@ -354,8 +353,8 @@
   }
 
   :global(.result-text mark) {
-    background: rgba(250,204,21,.3);
-    color: #fbbf24;
+    background: rgba(201,144,63,.35);
+    color: var(--accent-h);
     border-radius: 2px;
   }
 </style>

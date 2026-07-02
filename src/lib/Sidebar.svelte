@@ -64,9 +64,12 @@
 <!-- Sidebar -->
 <aside class="sidebar">
   <header class="brand">
-    <div class="logo">R</div>
+    <svg class="logo" viewBox="0 0 32 32" fill="none">
+      <circle cx="16" cy="16" r="15" stroke="var(--accent)" stroke-width="1.4"/>
+      <path d="M11 21V11h4.2c1.9 0 3.3 1.2 3.3 2.9 0 1.3-.8 2.3-2 2.7l2.5 4.4h-1.9l-2.3-4.1h-2.1V21H11Zm1.7-5.6h2.4c1 0 1.7-.6 1.7-1.5s-.7-1.5-1.7-1.5h-2.4v3Z" fill="var(--accent)"/>
+    </svg>
     <div>
-      <div class="brand-name">RAGCreator</div>
+      <div class="brand-name serif">RAGCreator</div>
       <div class="brand-sub">Medische richtlijnen</div>
     </div>
   </header>
@@ -116,7 +119,7 @@
   <div class="overlay" on:click={() => showNewModal = false} role="dialog" aria-modal="true">
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <div class="modal" on:click|stopPropagation>
-      <h2 class="modal-title">Nieuw project</h2>
+      <h2 class="modal-title serif">Nieuw project</h2>
 
       <label class="field">
         <span class="field-label">Naam <span class="required">*</span></span>
@@ -170,22 +173,15 @@
     padding: 20px 16px 18px;
     border-bottom: 1px solid var(--border);
   }
-  .logo {
-    width: 32px; height: 32px;
-    background: var(--accent);
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 16px; color: #fff;
-    flex-shrink: 0;
-  }
-  .brand-name { font-weight: 600; font-size: 14px; }
+  .logo { width: 30px; height: 30px; flex-shrink: 0; }
+  .brand-name { font-weight: 600; font-size: 15px; }
   .brand-sub  { font-size: 11px; color: var(--text-3); }
 
   .section-label {
-    padding: 16px 16px 6px;
+    padding: 20px 16px 8px;
     font-size: 10px;
     font-weight: 700;
-    letter-spacing: .08em;
+    letter-spacing: .1em;
     text-transform: uppercase;
     color: var(--text-3);
   }
@@ -203,28 +199,27 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px 8px;
+    padding: 8px 10px;
     border-radius: var(--radius);
+    border-left: 2px solid transparent;
     cursor: pointer;
-    transition: background .12s;
+    transition: background .12s, border-color .12s;
     position: relative;
   }
   .project-item:hover          { background: var(--bg-hover); }
-  .project-item.active         { background: var(--accent-dim); }
+  .project-item.active         { background: var(--bg-hover); border-left-color: var(--accent); }
   .project-item:hover .delete-btn { opacity: 1; }
 
   .project-avatar {
-    width: 30px; height: 30px; flex-shrink: 0;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 6px;
+    width: 26px; height: 26px; flex-shrink: 0;
+    font-family: var(--mono);
     display: flex; align-items: center; justify-content: center;
-    font-size: 11px; font-weight: 700; color: var(--text-2);
+    font-size: 10px; font-weight: 700; color: var(--text-3);
+    border: 1px solid var(--border);
   }
   .project-item.active .project-avatar {
-    background: var(--accent-dim);
-    border-color: var(--accent);
     color: var(--accent-h);
+    border-color: var(--accent);
   }
 
   .project-info {
@@ -266,18 +261,19 @@
     margin: 12px 8px 0;
     padding: 9px 12px;
     border-radius: var(--radius);
-    background: var(--accent-dim);
-    color: var(--accent-h);
-    border: 1px dashed var(--accent);
-    font-size: 13px;
-    font-weight: 500;
+    background: transparent;
+    color: var(--text-2);
+    border: 1px solid var(--border);
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: .02em;
     display: flex;
     align-items: center;
-    gap: 6px;
-    transition: background .15s;
+    gap: 7px;
+    transition: background .15s, color .15s, border-color .15s;
   }
-  .new-btn:hover { background: rgba(99,102,241,.25); }
-  .plus { font-size: 16px; line-height: 1; }
+  .new-btn:hover { background: var(--accent-dim); color: var(--accent-h); border-color: var(--accent); }
+  .plus { font-size: 15px; line-height: 1; color: var(--accent); }
 
   /* Modal */
   .overlay {
@@ -289,13 +285,14 @@
   .modal {
     background: var(--bg-card);
     border: 1px solid var(--border);
+    border-top: 2px solid var(--accent);
     border-radius: var(--radius-lg);
     padding: 28px;
     width: 380px;
     box-shadow: var(--shadow);
     display: flex; flex-direction: column; gap: 16px;
   }
-  .modal-title { font-size: 16px; font-weight: 600; }
+  .modal-title { font-size: 19px; font-weight: 500; }
 
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field-label { font-size: 12px; color: var(--text-2); font-weight: 500; }
@@ -304,7 +301,7 @@
 
   .modal-error {
     font-size: 12px;
-    color: #fca5a5;
+    color: #d6897b;
     background: var(--error-dim);
     padding: 8px 12px;
     border-radius: var(--radius);

@@ -37,6 +37,9 @@
 
     await listen('pipeline-done', ({ payload }) => {
       setStepState(payload.step, payload.success ? 'done' : 'error')
+      // Status can only change once the step process has actually exited —
+      // refresh here instead of guessing with a timeout.
+      if ($activeProject) refreshStatus($activeProject)
     })
   })
 
@@ -62,7 +65,7 @@
       </div>
     {:else if !$activeProject}
       <div class="empty-state">
-        <div class="empty-icon">⬡</div>
+        <div class="empty-mark">RC</div>
         <p>Maak een project aan of selecteer er één via de zijbalk.</p>
       </div>
     {:else}
@@ -102,27 +105,28 @@
   :global(*, *::before, *::after) { box-sizing: border-box; margin: 0; padding: 0; }
 
   :global(:root) {
-    --bg-base:     #0d0e1a;
-    --bg-surface:  #13141f;
-    --bg-card:     #1a1b2e;
-    --bg-hover:    #22233a;
-    --border:      #2a2c45;
-    --accent:      #6366f1;
-    --accent-h:    #818cf8;
-    --accent-dim:  rgba(99,102,241,.15);
-    --success:     #22c55e;
-    --success-dim: rgba(34,197,94,.15);
-    --error:       #ef4444;
-    --error-dim:   rgba(239,68,68,.15);
-    --warn:        #f59e0b;
-    --warn-dim:    rgba(245,158,11,.15);
-    --text-1:      #e2e8f0;
-    --text-2:      #94a3b8;
-    --text-3:      #4b5680;
+    --bg-base:     #16141a;
+    --bg-surface:  #1c1a21;
+    --bg-card:     #221f28;
+    --bg-hover:    #2b2732;
+    --border:      #363140;
+    --accent:      #c9903f;
+    --accent-h:    #ddab63;
+    --accent-dim:  rgba(201,144,63,.16);
+    --success:     #5c9d76;
+    --success-dim: rgba(92,157,118,.16);
+    --error:       #c8604e;
+    --error-dim:   rgba(200,96,78,.16);
+    --warn:        #c9903f;
+    --warn-dim:    rgba(201,144,63,.16);
+    --text-1:      #eae5dd;
+    --text-2:      #a49dab;
+    --text-3:      #665f70;
     --mono:        'JetBrains Mono','Fira Code','Cascadia Code',monospace;
-    --radius:      8px;
-    --radius-lg:   12px;
-    --shadow:      0 4px 24px rgba(0,0,0,.4);
+    --serif:       'Iowan Old Style','Palatino','Georgia',serif;
+    --radius:      5px;
+    --radius-lg:   8px;
+    --shadow:      0 12px 32px rgba(0,0,0,.5);
   }
 
   :global(body) {
@@ -133,6 +137,11 @@
     line-height: 1.5;
     overflow: hidden;
     user-select: none;
+  }
+
+  :global(h1, h2, h3, .serif) {
+    font-family: var(--serif);
+    letter-spacing: .01em;
   }
 
   :global(button) {
@@ -176,25 +185,26 @@
   /* Tab bar */
   .tabbar {
     display: flex;
-    gap: 2px;
-    padding: 12px 20px 0;
+    gap: 28px;
+    padding: 18px 28px 0;
     border-bottom: 1px solid var(--border);
     background: var(--bg-surface);
     flex-shrink: 0;
   }
 
   .tab {
-    padding: 8px 18px;
-    border-radius: var(--radius) var(--radius) 0 0;
-    color: var(--text-2);
-    font-size: 13px;
-    font-weight: 500;
-    transition: color .15s, background .15s;
+    padding: 0 0 12px;
+    color: var(--text-3);
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    transition: color .15s;
     border-bottom: 2px solid transparent;
     margin-bottom: -1px;
   }
-  .tab:hover  { color: var(--text-1); background: var(--bg-hover); }
-  .tab.active { color: var(--accent-h); border-bottom-color: var(--accent); background: var(--bg-card); }
+  .tab:hover  { color: var(--text-2); }
+  .tab.active { color: var(--accent-h); border-bottom-color: var(--accent); }
 
   .tab-content {
     flex: 1;
@@ -209,7 +219,7 @@
     background: var(--error-dim);
     border: 1px solid var(--error);
     border-radius: var(--radius);
-    color: #fca5a5;
+    color: #d6897b;
     display: flex;
     gap: 10px;
     align-items: center;
@@ -221,8 +231,20 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    gap: 16px;
+    gap: 18px;
     color: var(--text-3);
   }
-  .empty-icon { font-size: 48px; opacity: .4; }
+  .empty-mark {
+    font-family: var(--serif);
+    font-size: 34px;
+    font-weight: 500;
+    color: var(--text-3);
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    width: 76px;
+    height: 76px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
 </style>

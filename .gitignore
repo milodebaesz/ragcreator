@@ -21,6 +21,7 @@ medical_rag_project/.env
 
 # Data (PDFs, embeddings, generated chunks) — source code only
 medical_rag_project/data/
+medical_rag_project/projects/
 
 # Tooling
 .projectradar.json
