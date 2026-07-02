@@ -61,6 +61,12 @@ pub struct ProjectStatus {
 // ── Chunk types ───────────────────────────────────────────────────────────────
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ReferenceEntry {
+    pub id: i64,
+    pub text: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ChunkMetadata {
     #[serde(rename = "type")]
     pub chunk_type: Option<String>,
@@ -74,9 +80,9 @@ pub struct ChunkMetadata {
     pub guideline: Option<String>,
     pub year: Option<String>,
     #[serde(default)]
-    pub references: Vec<String>,
+    pub references: Vec<ReferenceEntry>,
     #[serde(default)]
-    pub ref_ids: Vec<serde_json::Value>,
+    pub ref_ids: Vec<i64>,
     #[serde(default)]
     pub approved: bool,
 }
@@ -425,6 +431,119 @@ pub async fn run_pipeline_step(
     Ok(())
 }
 
+// ── References ───────────────────────────────────────────────────────────────
+//
+// Mirrors the parsing in scripts/2_extract_guideline_structure.py so manually
+// typed reference numbers resolve the same way automated extraction does.
+
+fn is_heading(line: &str) -> Option<(usize, &str)> {
+    let trimmed = line.trim_start();
+    let hashes = trimmed.chars().take_while(|&c| c == '#').count();
+    if !(1..=4).contains(&hashes) {
+        return None;
+    }
+    let rest = &trimmed[hashes..];
+    if rest.is_empty() || !rest.starts_with(char::is_whitespace) {
+        return None;
+    }
+    Some((hashes, rest.trim()))
+}
+
+fn is_references_heading(line: &str) -> bool {
+    let Some((_, rest)) = is_heading(line) else {
+        return false;
+    };
+    let rest = rest.trim_matches('*').trim();
+    let digit_len = rest.chars().take_while(|c| c.is_ascii_digit()).count();
+    let rest = rest[digit_len..].trim_start_matches('.').trim();
+    let rest = rest.trim_matches('*').trim();
+    matches!(rest.to_lowercase().as_str(), "references" | "reference")
+}
+
+fn parse_entry_start(line: &str) -> Option<(i64, &str)> {
+    let trimmed = line.trim_start();
+    let digit_len = trimmed.chars().take_while(|c| c.is_ascii_digit()).count();
+    if digit_len == 0 {
+        return None;
+    }
+    let rest = &trimmed[digit_len..];
+    let after_dot = rest.strip_prefix('.')?;
+    if !after_dot.starts_with(char::is_whitespace) {
+        return None;
+    }
+    let num: i64 = trimmed[..digit_len].parse().ok()?;
+    Some((num, after_dot.trim_start()))
+}
+
+fn clean_ref_text(text: &str) -> String {
+    let stripped: String = text.chars().filter(|c| !matches!(c, '*' | '_' | '`')).collect();
+    stripped.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Parse the "## References" section of a converted guideline.md into
+/// {ref_number: reference_text}, handling multi-line entries.
+fn parse_reference_section(markdown: &str) -> HashMap<i64, String> {
+    let mut refs = HashMap::new();
+    let lines: Vec<&str> = markdown.lines().collect();
+
+    let Some(start) = lines.iter().position(|l| is_references_heading(l)) else {
+        return refs;
+    };
+
+    let mut body: Vec<&str> = Vec::new();
+    for line in &lines[start + 1..] {
+        if is_heading(line).is_some() {
+            break;
+        }
+        body.push(line);
+    }
+
+    let mut current: Option<(i64, String)> = None;
+    for line in body {
+        if let Some((num, rest)) = parse_entry_start(line) {
+            if let Some((n, text)) = current.take() {
+                let cleaned = clean_ref_text(&text);
+                if !cleaned.is_empty() {
+                    refs.insert(n, cleaned);
+                }
+            }
+            current = Some((num, rest.to_string()));
+        } else if let Some((_, text)) = current.as_mut() {
+            text.push(' ');
+            text.push_str(line.trim());
+        }
+    }
+    if let Some((n, text)) = current {
+        let cleaned = clean_ref_text(&text);
+        if !cleaned.is_empty() {
+            refs.insert(n, cleaned);
+        }
+    }
+
+    refs
+}
+
+/// Look up reference text for a chunk's ref_ids against guideline.md.
+/// Returns an empty list if there's no guideline.md or no matches.
+fn resolve_references(state: &AppState, project: &str, ref_ids: &[i64]) -> Vec<ReferenceEntry> {
+    if ref_ids.is_empty() {
+        return vec![];
+    }
+    let md_path = project_data_dir(state, project).join("guideline.md");
+    let Ok(markdown) = std::fs::read_to_string(&md_path) else {
+        return vec![];
+    };
+    let ref_dict = parse_reference_section(&markdown);
+    ref_ids
+        .iter()
+        .filter_map(|id| {
+            ref_dict
+                .get(id)
+                .map(|text| ReferenceEntry { id: *id, text: text.clone() })
+        })
+        .collect()
+}
+
 // ── Commands: chunks ──────────────────────────────────────────────────────────
 
 #[derive(Serialize)]
@@ -507,8 +626,12 @@ pub fn search_chunks(
 pub fn save_chunk(
     state: State<AppState>,
     project: String,
-    chunk: Chunk,
-) -> Result<(), String> {
+    mut chunk: Chunk,
+) -> Result<Chunk, String> {
+    // Always resolve against guideline.md, so a manually typed reference
+    // number gets its text looked up the same way extraction does.
+    chunk.metadata.references = resolve_references(&state, &project, &chunk.metadata.ref_ids);
+
     let path = project_data_dir(&state, &project).join("rag_chunks.json");
     let mut all: Vec<Chunk> = if path.exists() {
         let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
@@ -518,12 +641,13 @@ pub fn save_chunk(
     };
 
     match all.iter_mut().find(|c| c.id == chunk.id) {
-        Some(existing) => *existing = chunk,
-        None => all.push(chunk),
+        Some(existing) => *existing = chunk.clone(),
+        None => all.push(chunk.clone()),
     }
 
     let text = serde_json::to_string_pretty(&all).map_err(|e| e.to_string())?;
-    std::fs::write(&path, text).map_err(|e| e.to_string())
+    std::fs::write(&path, text).map_err(|e| e.to_string())?;
+    Ok(chunk)
 }
 
 #[tauri::command]

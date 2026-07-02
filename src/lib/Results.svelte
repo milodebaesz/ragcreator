@@ -53,9 +53,9 @@
 
   async function toggleApproved(chunk, event) {
     event.stopPropagation()
-    const updated = { ...chunk, metadata: { ...chunk.metadata, approved: !chunk.metadata.approved } }
+    const draft = { ...chunk, metadata: { ...chunk.metadata, approved: !chunk.metadata.approved } }
     try {
-      await invoke('save_chunk', { project: $activeProject, chunk: updated })
+      const updated = await invoke('save_chunk', { project: $activeProject, chunk: draft })
       if (onlyUnapproved && updated.metadata.approved) {
         // No longer matches the "niet geaccordeerd" filter — drop it from view.
         items = items.filter(c => c.id !== chunk.id)
@@ -184,8 +184,10 @@
     saving = true
     errMsg = ''
     try {
-      const chunk = draftToChunk()
-      await invoke('save_chunk', { project: $activeProject, chunk })
+      // save_chunk resolves reference numbers against guideline.md server-side
+      // and returns the saved chunk — use that (not the local draft) so newly
+      // looked-up reference text actually shows up.
+      const chunk = await invoke('save_chunk', { project: $activeProject, chunk: draftToChunk() })
       if (onlyUnapproved && chunk.metadata.approved) {
         items = items.filter(c => c.id !== chunk.id)
         total = Math.max(0, total - 1)
@@ -368,7 +370,7 @@
                         <span class="detail-label">Opgeloste referenties ({draft.references.length})</span>
                         <ul class="ref-list">
                           {#each draft.references.slice(0,5) as ref}
-                            <li>{ref}</li>
+                            <li><span class="ref-num">{ref.id}</span> {ref.text}</li>
                           {/each}
                           {#if draft.references.length > 5}
                             <li class="ref-more">+{draft.references.length - 5} meer</li>
@@ -632,9 +634,20 @@
   .detail-label   { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
   .detail-val     { font-size: 13px; color: var(--text-2); }
 
-  .ref-list { list-style: none; display: flex; flex-direction: column; gap: 3px; }
-  .ref-list li    { font-size: 12px; color: var(--text-2); padding-left: 10px; position: relative; }
-  .ref-list li::before { content: '—'; position: absolute; left: 0; color: var(--text-3); }
+  .ref-list { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+  .ref-list li { font-size: 12px; color: var(--text-2); }
+  .ref-num {
+    display: inline-block;
+    min-width: 22px;
+    padding: 0 4px;
+    margin-right: 4px;
+    border-radius: 3px;
+    background: var(--bg-hover);
+    color: var(--text-3);
+    font-family: var(--mono);
+    font-size: 11px;
+    text-align: center;
+  }
   .ref-more { color: var(--text-3); font-style: italic; }
 
   .err-msg { font-size: 12px; color: #d6897b; }
