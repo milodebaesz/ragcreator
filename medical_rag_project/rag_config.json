@@ -1,5 +1,5 @@
 {
-  "active": "ACS",
+  "active": "Valvular",
   "projects": [
     "default",
     "CCS",
@@ -7,17 +7,25 @@
     "ACS"
   ],
   "project_meta": {
-    "CCS": {
-      "year": "2024"
+    "Valvular": {
+      "year": "2025",
+      "pdf_path": "/Users/mkb/Desktop/ehaf194.pdf",
+      "pdf_name": "ehaf194.pdf"
     },
     "CCS2024": {
-      "year": "2024"
-    },
-    "Valvular": {
-      "year": "2025"
+      "year": "2024",
+      "pdf_path": null,
+      "pdf_name": null
     },
     "ACS": {
-      "year": "2023"
+      "year": "2023",
+      "pdf_path": null,
+      "pdf_name": null
+    },
+    "CCS": {
+      "year": "2024",
+      "pdf_path": null,
+      "pdf_name": null
     }
   }
 }

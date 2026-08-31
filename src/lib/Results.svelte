@@ -1,12 +1,13 @@
 <script>
+  import { tick } from 'svelte'
   import { invoke } from '@tauri-apps/api/core'
   import { activeProject } from './stores.js'
 
-  const PAGE_SIZE = 25
+  const ALL = 100000
   const REC_CLASSES = ['Class I', 'Class IIa', 'Class IIb', 'Class III']
   const EVIDENCE_LEVELS = ['A', 'B', 'C', 'NR']
+  const NO_TABLE_KEY = '__none__'
 
-  let page  = 0
   let total = 0
   let items = []
   let loading = false
@@ -19,9 +20,56 @@
   let confirmingDelete = false
   let errMsg = ''
 
-  $: totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  let collapsedKeys = new Set()
 
-  $: if ($activeProject) { page = 0; load() }
+  $: if ($activeProject) load()
+
+  $: groups = groupItems(items)
+
+  function splitTitle(title) {
+    const idx = title.indexOf('—')
+    if (idx === -1) return { short: title, rest: '' }
+    return { short: title.slice(0, idx).trim(), rest: title.slice(idx + 1).trim() }
+  }
+
+  function extractTableNum(title) {
+    const m = title.match(/Table\s+(\d+)/i)
+    return m ? Number(m[1]) : null
+  }
+
+  function groupKey(chunk) {
+    return (chunk.metadata.table_title || '').trim() || NO_TABLE_KEY
+  }
+
+  function groupItems(list) {
+    const map = new Map()
+    for (const c of list) {
+      const key = groupKey(c)
+      if (!map.has(key)) map.set(key, [])
+      map.get(key).push(c)
+    }
+    const result = [...map.entries()].map(([key, chunks]) => {
+      const title = key === NO_TABLE_KEY ? 'Overig / geen tabel' : key
+      const { short, rest } = splitTitle(title)
+      return {
+        key,
+        short,
+        rest,
+        chunks,
+        approvedCount: chunks.filter(c => c.metadata.approved).length,
+        num: key === NO_TABLE_KEY ? null : extractTableNum(title),
+      }
+    })
+    result.sort((a, b) => {
+      if (a.key === NO_TABLE_KEY) return 1
+      if (b.key === NO_TABLE_KEY) return -1
+      if (a.num != null && b.num != null) return a.num - b.num
+      if (a.num != null) return -1
+      if (b.num != null) return 1
+      return a.short.localeCompare(b.short)
+    })
+    return result
+  }
 
   async function load() {
     if (!$activeProject) return
@@ -30,12 +78,13 @@
     try {
       const res = await invoke('get_chunks', {
         project: $activeProject,
-        page,
-        pageSize: PAGE_SIZE,
+        page: 0,
+        pageSize: ALL,
         approvedFilter: onlyUnapproved ? false : null,
       })
       items = res.items
       total = res.total
+      collapsedKeys = new Set(groupItems(items).map(g => g.key))
     } catch (e) {
       console.error(e)
       items = []
@@ -47,9 +96,17 @@
   function setFilter(unapprovedOnly) {
     if (onlyUnapproved === unapprovedOnly) return
     onlyUnapproved = unapprovedOnly
-    page = 0
     load()
   }
+
+  function toggleGroup(key) {
+    if (collapsedKeys.has(key)) collapsedKeys.delete(key)
+    else collapsedKeys.add(key)
+    collapsedKeys = collapsedKeys
+  }
+
+  function expandAll() { collapsedKeys = new Set() }
+  function collapseAll() { collapsedKeys = new Set(groups.map(g => g.key)) }
 
   async function toggleApproved(chunk, event) {
     event.stopPropagation()
@@ -69,9 +126,6 @@
       console.error(e)
     }
   }
-
-  function prevPage() { if (page > 0) { page--; load() } }
-  function nextPage() { if (page < totalPages - 1) { page++; load() } }
 
   function classColor(cls) {
     if (!cls) return 'neutral'
@@ -117,6 +171,8 @@
     } else {
       editingId = chunk.id
       draft = toDraft(chunk)
+      collapsedKeys.delete(groupKey(chunk))
+      collapsedKeys = collapsedKeys
     }
   }
 
@@ -127,7 +183,7 @@
     confirmingDelete = false
   }
 
-  function addNew() {
+  async function addNew() {
     errMsg = ''
     const id = `rec_manual_${Date.now()}`
     const blank = {
@@ -152,6 +208,10 @@
     total += 1
     editingId = id
     draft = toDraft(blank)
+    collapsedKeys.delete(NO_TABLE_KEY)
+    collapsedKeys = collapsedKeys
+    await tick()
+    document.getElementById(`row-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }
 
   function draftToChunk() {
@@ -231,13 +291,20 @@
   <div class="results-header">
     <h2 class="results-title serif">Resultaten</h2>
     {#if total > 0}
-      <span class="total-badge">{total} aanbevelingen</span>
+      <span class="total-badge">{total} aanbevelingen · {groups.length} tabellen</span>
     {/if}
 
     <div class="filter-toggle">
       <button class="filter-opt" class:active={!onlyUnapproved} on:click={() => setFilter(false)}>Alles</button>
       <button class="filter-opt" class:active={onlyUnapproved} on:click={() => setFilter(true)}>Niet geaccordeerd</button>
     </div>
+
+    {#if groups.length > 0}
+      <div class="filter-toggle">
+        <button class="filter-opt" on:click={expandAll}>▾ Alles uitklappen</button>
+        <button class="filter-opt" on:click={collapseAll}>▸ Alles inklappen</button>
+      </div>
+    {/if}
 
     <button class="btn-add" on:click={addNew} disabled={!$activeProject}>+ Nieuwe aanbeveling</button>
   </div>
@@ -254,164 +321,179 @@
       {/if}
     </div>
   {:else}
-    <!-- Table -->
-    <div class="table-wrap">
-      <table class="chunk-table">
-        <thead>
-          <tr>
-            <th class="col-check">Ok</th>
-            <th class="col-id">#</th>
-            <th class="col-class">Klasse</th>
-            <th class="col-ev">Ev.</th>
-            <th class="col-disease">Ziekte</th>
-            <th class="col-topic">Onderwerp</th>
-            <th class="col-text">Aanbeveling</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each items as chunk (chunk.id)}
-            <!-- svelte-ignore a11y-click-events-have-key-events -->
-            <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-            <tr
-              class="chunk-row"
-              class:expanded-row={editingId === chunk.id}
-              class:approved-row={chunk.metadata.approved}
-              on:click={() => toggleRow(chunk)}
-            >
-              <td class="col-check">
-                <!-- svelte-ignore a11y-click-events-have-key-events -->
-                <!-- svelte-ignore a11y-no-static-element-interactions -->
-                <span class="approve-check" class:checked={chunk.metadata.approved}
-                  on:click={(e) => toggleApproved(chunk, e)}
-                  title={chunk.metadata.approved ? 'Geaccordeerd — klik om ongedaan te maken' : 'Markeer als geaccordeerd'}
-                >{chunk.metadata.approved ? '✓' : ''}</span>
-              </td>
-              <td class="col-id mono">{chunk.id}</td>
-              <td class="col-class">
-                {#if chunk.metadata.class}
-                  <span class="badge {classColor(chunk.metadata.class)}">
-                    {chunk.metadata.class.replace('Class ', '')}
-                  </span>
-                {/if}
-              </td>
-              <td class="col-ev">
-                {#if chunk.metadata.evidence}
-                  <span class="badge {evidenceColor(chunk.metadata.evidence)}">
-                    {chunk.metadata.evidence}
-                  </span>
-                {/if}
-              </td>
-              <td class="col-disease tag">{chunk.metadata.disease ?? '—'}</td>
-              <td class="col-topic tag">{chunk.metadata.topic ?? '—'}</td>
-              <td class="col-text truncate">{chunk.text || '(leeg)'}</td>
-            </tr>
+    <div class="groups-wrap">
+      {#each groups as group (group.key)}
+        {@const isCollapsed = collapsedKeys.has(group.key)}
+        <div class="table-group">
+          <!-- svelte-ignore a11y-click-events-have-key-events -->
+          <button class="group-header" on:click={() => toggleGroup(group.key)}>
+            <span class="group-chevron">{isCollapsed ? '▸' : '▾'}</span>
+            <span class="group-title">
+              <span class="group-short">{group.short}</span>
+              {#if group.rest}<span class="group-rest">{group.rest}</span>{/if}
+            </span>
+            <span class="group-count">{group.chunks.length}</span>
+            <span class="group-approved" class:all-approved={group.approvedCount === group.chunks.length}>
+              {group.approvedCount}/{group.chunks.length} ✓
+            </span>
+          </button>
 
-            {#if editingId === chunk.id && draft}
-              <tr class="detail-row">
-                <td colspan="7">
-                  <!-- svelte-ignore a11y-click-events-have-key-events -->
-                  <!-- svelte-ignore a11y-no-static-element-interactions -->
-                  <div class="edit-panel" on:click|stopPropagation>
-                    <label class="edit-field stretch">
-                      <span class="edit-label">Tekst</span>
-                      <textarea class="edit-text" rows="5" bind:value={draft.text}></textarea>
-                    </label>
+          {#if !isCollapsed}
+            <div class="table-wrap">
+              <table class="chunk-table">
+                <thead>
+                  <tr>
+                    <th class="col-check">Ok</th>
+                    <th class="col-id">#</th>
+                    <th class="col-class">Klasse</th>
+                    <th class="col-ev">Ev.</th>
+                    <th class="col-disease">Ziekte</th>
+                    <th class="col-topic">Onderwerp</th>
+                    <th class="col-text">Aanbeveling</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each group.chunks as chunk (chunk.id)}
+                    <!-- svelte-ignore a11y-click-events-have-key-events -->
+                    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+                    <tr
+                      id="row-{chunk.id}"
+                      class="chunk-row"
+                      class:expanded-row={editingId === chunk.id}
+                      class:approved-row={chunk.metadata.approved}
+                      on:click={() => toggleRow(chunk)}
+                    >
+                      <td class="col-check">
+                        <!-- svelte-ignore a11y-click-events-have-key-events -->
+                        <!-- svelte-ignore a11y-no-static-element-interactions -->
+                        <span class="approve-check" class:checked={chunk.metadata.approved}
+                          on:click={(e) => toggleApproved(chunk, e)}
+                          title={chunk.metadata.approved ? 'Geaccordeerd — klik om ongedaan te maken' : 'Markeer als geaccordeerd'}
+                        >{chunk.metadata.approved ? '✓' : ''}</span>
+                      </td>
+                      <td class="col-id mono">{chunk.id}</td>
+                      <td class="col-class">
+                        {#if chunk.metadata.class}
+                          <span class="badge {classColor(chunk.metadata.class)}">
+                            {chunk.metadata.class.replace('Class ', '')}
+                          </span>
+                        {/if}
+                      </td>
+                      <td class="col-ev">
+                        {#if chunk.metadata.evidence}
+                          <span class="badge {evidenceColor(chunk.metadata.evidence)}">
+                            {chunk.metadata.evidence}
+                          </span>
+                        {/if}
+                      </td>
+                      <td class="col-disease tag">{chunk.metadata.disease ?? '—'}</td>
+                      <td class="col-topic tag">{chunk.metadata.topic ?? '—'}</td>
+                      <td class="col-text truncate">{chunk.text || '(leeg)'}</td>
+                    </tr>
 
-                    {#if draft.class === 'Class III'}
-                      <p class="class3-warning">⚠ Contra-indicatie — Class III: niet aanbevolen</p>
+                    {#if editingId === chunk.id && draft}
+                      <tr class="detail-row">
+                        <td colspan="7">
+                          <!-- svelte-ignore a11y-click-events-have-key-events -->
+                          <!-- svelte-ignore a11y-no-static-element-interactions -->
+                          <div class="edit-panel" on:click|stopPropagation>
+                            <label class="edit-field stretch">
+                              <span class="edit-label">Tekst</span>
+                              <textarea class="edit-text" rows="5" bind:value={draft.text}></textarea>
+                            </label>
+
+                            {#if draft.class === 'Class III'}
+                              <p class="class3-warning">⚠ Contra-indicatie — Class III: niet aanbevolen</p>
+                            {/if}
+
+                            <div class="edit-row">
+                              <label class="edit-field">
+                                <span class="edit-label">Klasse</span>
+                                <select bind:value={draft.class}>
+                                  {#each REC_CLASSES as c}<option value={c}>{c}</option>{/each}
+                                </select>
+                              </label>
+                              <label class="edit-field">
+                                <span class="edit-label">Evidence</span>
+                                <select bind:value={draft.evidence}>
+                                  {#each EVIDENCE_LEVELS as e}<option value={e}>{e}</option>{/each}
+                                </select>
+                              </label>
+                              <label class="edit-field">
+                                <span class="edit-label">Ziekte</span>
+                                <input bind:value={draft.disease} />
+                              </label>
+                              <label class="edit-field">
+                                <span class="edit-label">Onderwerp</span>
+                                <input bind:value={draft.topic} />
+                              </label>
+                            </div>
+
+                            <div class="edit-row">
+                              <label class="edit-field stretch">
+                                <span class="edit-label">Tabel</span>
+                                <input bind:value={draft.tableTitle} placeholder="—" />
+                              </label>
+                              <label class="edit-field stretch">
+                                <span class="edit-label">Referentie-nrs (komma-gescheiden)</span>
+                                <input bind:value={draft.refIds} placeholder="bijv. 12, 34, 56" />
+                              </label>
+                            </div>
+
+                            <div class="edit-meta">
+                              <span class="detail-label">Sectie</span>
+                              <span class="detail-val">{draft.section || '—'}</span>
+                            </div>
+
+                            <label class="approve-field">
+                              <input type="checkbox" bind:checked={draft.approved} />
+                              Geaccordeerd
+                            </label>
+
+                            {#if draft.references?.length > 0}
+                              <div class="detail-section">
+                                <span class="detail-label">Opgeloste referenties ({draft.references.length})</span>
+                                <ul class="ref-list">
+                                  {#each draft.references.slice(0,5) as ref}
+                                    <li><span class="ref-num">{ref.id}</span> {ref.text}</li>
+                                  {/each}
+                                  {#if draft.references.length > 5}
+                                    <li class="ref-more">+{draft.references.length - 5} meer</li>
+                                  {/if}
+                                </ul>
+                              </div>
+                            {/if}
+
+                            {#if errMsg}
+                              <p class="err-msg">{errMsg}</p>
+                            {/if}
+
+                            <div class="edit-actions">
+                              {#if confirmingDelete}
+                                <span class="confirm-text">Definitief verwijderen?</span>
+                                <button class="btn-ghost" on:click={() => confirmingDelete = false}>Nee</button>
+                                <button class="btn-danger" on:click={deleteDraft} disabled={deleting}>
+                                  {deleting ? 'Verwijderen…' : 'Ja, verwijderen'}
+                                </button>
+                              {:else}
+                                <button class="btn-ghost" on:click={closeEditor}>Annuleren</button>
+                                <button class="btn-danger" on:click={requestDelete}>Verwijderen</button>
+                                <button class="btn-save" on:click={saveDraft} disabled={saving}>
+                                  {saving ? 'Opslaan…' : 'Opslaan'}
+                                </button>
+                              {/if}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
                     {/if}
-
-                    <div class="edit-row">
-                      <label class="edit-field">
-                        <span class="edit-label">Klasse</span>
-                        <select bind:value={draft.class}>
-                          {#each REC_CLASSES as c}<option value={c}>{c}</option>{/each}
-                        </select>
-                      </label>
-                      <label class="edit-field">
-                        <span class="edit-label">Evidence</span>
-                        <select bind:value={draft.evidence}>
-                          {#each EVIDENCE_LEVELS as e}<option value={e}>{e}</option>{/each}
-                        </select>
-                      </label>
-                      <label class="edit-field">
-                        <span class="edit-label">Ziekte</span>
-                        <input bind:value={draft.disease} />
-                      </label>
-                      <label class="edit-field">
-                        <span class="edit-label">Onderwerp</span>
-                        <input bind:value={draft.topic} />
-                      </label>
-                    </div>
-
-                    <div class="edit-row">
-                      <label class="edit-field stretch">
-                        <span class="edit-label">Tabel</span>
-                        <input bind:value={draft.tableTitle} placeholder="—" />
-                      </label>
-                      <label class="edit-field stretch">
-                        <span class="edit-label">Referentie-nrs (komma-gescheiden)</span>
-                        <input bind:value={draft.refIds} placeholder="bijv. 12, 34, 56" />
-                      </label>
-                    </div>
-
-                    <div class="edit-meta">
-                      <span class="detail-label">Sectie</span>
-                      <span class="detail-val">{draft.section || '—'}</span>
-                    </div>
-
-                    <label class="approve-field">
-                      <input type="checkbox" bind:checked={draft.approved} />
-                      Geaccordeerd
-                    </label>
-
-                    {#if draft.references?.length > 0}
-                      <div class="detail-section">
-                        <span class="detail-label">Opgeloste referenties ({draft.references.length})</span>
-                        <ul class="ref-list">
-                          {#each draft.references.slice(0,5) as ref}
-                            <li><span class="ref-num">{ref.id}</span> {ref.text}</li>
-                          {/each}
-                          {#if draft.references.length > 5}
-                            <li class="ref-more">+{draft.references.length - 5} meer</li>
-                          {/if}
-                        </ul>
-                      </div>
-                    {/if}
-
-                    {#if errMsg}
-                      <p class="err-msg">{errMsg}</p>
-                    {/if}
-
-                    <div class="edit-actions">
-                      {#if confirmingDelete}
-                        <span class="confirm-text">Definitief verwijderen?</span>
-                        <button class="btn-ghost" on:click={() => confirmingDelete = false}>Nee</button>
-                        <button class="btn-danger" on:click={deleteDraft} disabled={deleting}>
-                          {deleting ? 'Verwijderen…' : 'Ja, verwijderen'}
-                        </button>
-                      {:else}
-                        <button class="btn-ghost" on:click={closeEditor}>Annuleren</button>
-                        <button class="btn-danger" on:click={requestDelete}>Verwijderen</button>
-                        <button class="btn-save" on:click={saveDraft} disabled={saving}>
-                          {saving ? 'Opslaan…' : 'Opslaan'}
-                        </button>
-                      {/if}
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            {/if}
-          {/each}
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Pagination -->
-    <div class="pagination">
-      <button class="pg-btn" on:click={prevPage} disabled={page === 0}>← Vorige</button>
-      <span class="pg-info">Pagina {page + 1} van {totalPages}</span>
-      <button class="pg-btn" on:click={nextPage} disabled={page >= totalPages - 1}>Volgende →</button>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          {/if}
+        </div>
+      {/each}
     </div>
   {/if}
 </div>
@@ -431,6 +513,7 @@
     align-items: center;
     gap: 12px;
     flex-shrink: 0;
+    flex-wrap: wrap;
   }
   .results-title { font-size: 20px; font-weight: 600; }
   .total-badge {
@@ -467,6 +550,7 @@
     font-weight: 600;
     color: var(--text-2);
     transition: background .12s, color .12s;
+    white-space: nowrap;
   }
   .filter-opt + .filter-opt { border-left: 1px solid var(--border); }
   .filter-opt:hover  { background: var(--bg-hover); }
@@ -484,12 +568,90 @@
   }
   .empty-icon { font-size: 40px; opacity: .3; }
 
-  /* Table */
-  .table-wrap {
+  /* Groups */
+  .groups-wrap {
     flex: 1;
     overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .table-group {
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .group-header {
+    width: 100%;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 11px 14px;
+    background: var(--bg-card);
+    cursor: pointer;
+    text-align: left;
+    transition: background .12s;
+  }
+  .group-header:hover { background: var(--bg-hover); }
+
+  .group-chevron {
+    align-self: center;
+    font-size: 11px;
+    color: var(--text-3);
+    width: 10px;
+    flex-shrink: 0;
+  }
+  .group-title {
+    flex: 1;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+  }
+  .group-short {
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--text-1);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .group-rest {
+    font-size: 12px;
+    color: var(--text-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .group-count {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: var(--bg-hover);
+    color: var(--text-2);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .group-approved {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: var(--bg-hover);
+    color: var(--text-3);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .group-approved.all-approved { background: var(--success); color: #fff; }
+
+  /* Table */
+  .table-wrap {
+    overflow: auto;
+    border-top: 1px solid var(--border);
   }
 
   .chunk-table {
@@ -518,6 +680,7 @@
     cursor: pointer;
     transition: background .1s;
   }
+  .chunk-row:last-child { border-bottom: none; }
   .chunk-row:hover        { background: var(--bg-hover); }
   .chunk-row.expanded-row { background: var(--accent-dim); }
   .chunk-row.approved-row { opacity: .55; }
@@ -683,25 +846,4 @@
   }
   .btn-save:hover:not(:disabled) { background: var(--accent-h); }
   .btn-save:disabled { opacity: .5; cursor: not-allowed; }
-
-  /* Pagination */
-  .pagination {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    flex-shrink: 0;
-    padding: 4px 0;
-  }
-  .pg-btn {
-    padding: 6px 14px;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    font-size: 12px;
-    color: var(--text-2);
-    transition: background .12s;
-  }
-  .pg-btn:hover    { background: var(--bg-hover); color: var(--text-1); }
-  .pg-btn:disabled { opacity: .3; cursor: not-allowed; }
-  .pg-info { font-size: 12px; color: var(--text-3); }
 </style>

@@ -314,14 +314,10 @@ def extract_recommendations(
             ref_ids = sorted(set(ref_ids) | set(sup_ref_ids))
             references = [ref_dict[i] for i in ref_ids if i in ref_dict]
 
-            # Prepend table title for richer context (used by embeddings / RAG)
-            full_text = (f"{current_table_title}\n\n{clean_text}"
-                         if current_table_title else clean_text)
-
             counter += 1
             recs.append({
                 "id": f"rec_{counter}",
-                "text": full_text,
+                "text": clean_text,
                 "metadata": {
                     "type": "recommendation",
                     "class": normalize_class(match.group(2)),

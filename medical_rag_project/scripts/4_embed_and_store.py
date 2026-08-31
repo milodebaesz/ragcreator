@@ -54,7 +54,12 @@ def main() -> None:
     batches = [chunks[i:i + BATCH_SIZE] for i in range(0, len(chunks), BATCH_SIZE)]
 
     for batch in tqdm(batches, desc="Embedding chunks"):
-        texts = [c["text"] for c in batch]
+        # Prepend the table title (if any) for richer embedding context, without
+        # persisting it into the stored/displayed "text" field.
+        texts = [
+            f"{title}\n\n{c['text']}" if (title := c["metadata"].get("table_title")) else c["text"]
+            for c in batch
+        ]
         try:
             embeddings = get_embeddings(client, texts)
         except Exception as e:
