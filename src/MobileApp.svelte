@@ -238,7 +238,12 @@
     padding-bottom: env(safe-area-inset-bottom);
   }
   .tab {
-    flex: 1;
+    /* Basis 0, not auto: every tab gets an equal share instead of one sized to
+       its label, so the active border lines up under the label. The global
+       button reset inherits text-align, hence the explicit centre. */
+    flex: 1 1 0;
+    min-width: 0;
+    text-align: center;
     min-height: 52px;
     /* Four tabs now; "Aanbevelingen" is the widest and must still fit on one
        line at 390pt without wrapping. */
