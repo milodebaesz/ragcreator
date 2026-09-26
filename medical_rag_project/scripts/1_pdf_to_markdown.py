@@ -34,6 +34,13 @@ def convert_pdf_to_markdown(pdf_path: Path, output_path: Path) -> None:
     print("Converting PDF to markdown (this may take a moment)...")
     markdown_text = pymupdf4llm.to_markdown(str(pdf_path))
 
+    # pymupdf4llm drops spaces and ligatures in table cells ("inpatients",
+    # "signifcant"); repair against the PDF's own plain text. See text_repair.py.
+    from text_repair import repair_markdown
+
+    markdown_text, repaired = repair_markdown(markdown_text, pdf_path)
+    print(f"Repaired {repaired} words (missing spaces, ligatures, footnote letters).")
+
     output_path.write_text(markdown_text, encoding="utf-8")
     print(f"Saved markdown to: {output_path}")
 
