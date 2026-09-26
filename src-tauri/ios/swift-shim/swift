@@ -1,0 +1,23 @@
+#!/bin/sh
+# Shim voor `swift`, alleen gebruikt door `npm run ios:prebuild`.
+#
+# swift-rs (transitieve dependency van tauri) bouwt het Tauri Swift-package met
+# `swift build`. Sinds Swift 6.2 is de standaard build-backend `swiftbuild`, en
+# die maakt van de @_cdecl-exports in het package lokale symbolen ('t' in nm)
+# in plaats van globale ('T'). De Rust-kant kan ze dan niet vinden:
+#
+#   Undefined symbols for architecture arm64:
+#     "_retain_object", "_release_object", "_string_from_bytes", ...
+#
+# swift-rs 1.0.8 repareert dat achteraf met llvm-objcopy, maar alleen voor de
+# symbolen van het package zelf — die van de meegebouwde SwiftRs-module blijven
+# lokaal. De oude `native` backend houdt alles gewoon globaal, dus die forceren
+# we hier. Zie docs/IOS.md.
+#
+# Zodra swift-rs dit zelf afvangt kan dit bestand weg, samen met de
+# ios:prebuild-stap in package.json.
+if [ "$1" = "build" ]; then
+    shift
+    exec /usr/bin/swift build --build-system native "$@"
+fi
+exec /usr/bin/swift "$@"

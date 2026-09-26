@@ -1,0 +1,32 @@
+<!--
+  Reference copy. These keys live in src-tauri/gen/apple/project.yml (under the
+  target's `info.properties`), because xcodegen generates Info.plist from it and
+  edits made straight to the plist are lost on the next regeneration.
+
+  Keep this file in sync: `tauri ios init` regenerates project.yml too, and then
+  the keys have to be put back.
+
+  NSUbiquitousContainers is what makes the app's iCloud folder show up in the
+  Files app and in iCloud Drive on the Mac — without it the container syncs but
+  stays invisible, and the desktop app would have nowhere the user can see.
+
+  UIFileSharingEnabled / LSSupportsOpeningDocumentsInPlace expose the app's own
+  Documents folder too, which is the fallback storage.rs uses when iCloud is
+  unavailable (signed out, or no entitlement on a free provisioning profile).
+-->
+<key>NSUbiquitousContainers</key>
+<dict>
+	<key>iCloud.com.ragcreator.app</key>
+	<dict>
+		<key>NSUbiquitousContainerIsDocumentScopePublic</key>
+		<true/>
+		<key>NSUbiquitousContainerName</key>
+		<string>RAGCreator</string>
+		<key>NSUbiquitousContainerSupportedFolderLevels</key>
+		<string>Any</string>
+	</dict>
+</dict>
+<key>UIFileSharingEnabled</key>
+<true/>
+<key>LSSupportsOpeningDocumentsInPlace</key>
+<true/>

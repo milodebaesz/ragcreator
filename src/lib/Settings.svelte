@@ -1,6 +1,7 @@
 <script>
   import { invoke } from '@tauri-apps/api/core'
   import { envConfig } from './stores.js'
+  import IcloudSync from './IcloudSync.svelte'
 
   let saving  = false
   let saved   = false
@@ -109,6 +110,8 @@
       </button>
     </div>
   </form>
+
+  <IcloudSync />
 
   <!-- Info box -->
   <div class="info-box">

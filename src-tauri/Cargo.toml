@@ -5,12 +5,36 @@ description = "RAG pipeline builder for medical guidelines"
 authors = []
 edition = "2021"
 
+# iOS links the app as a static library rather than running a binary, so the
+# crate has to build both ways; `run()` lives in lib.rs for that reason.
+[lib]
+name = "ragcreator_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Desktop only: the pipeline shells out to Python, and only the desktop app
+# picks or saves files.
+[target.'cfg(not(any(target_os = "ios", target_os = "android")))'.dependencies]
+tauri-plugin-dialog = "2"
 tokio = { version = "1", features = ["full"] }
+
+# iOS cannot spawn `open`, so links go through the opener plugin instead.
+[target.'cfg(any(target_os = "ios", target_os = "android"))'.dependencies]
+tauri-plugin-opener = "2"
+
+# Resolving the app's iCloud Drive container is a Foundation call; see
+# storage.rs. macOS needs it too, to find where iOS syncs to.
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+objc2 = "0.6"
+
+# tao's iOS-scenecode geeft een vrijgegeven object terug aan UIKit, waardoor de
+# app crasht zodra hij zijn eerste scene opzet. Zie vendor/README.md.
+[patch.crates-io]
+tao = { path = "vendor/tao" }

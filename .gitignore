@@ -7,7 +7,15 @@ dist/
 
 # Tauri / Rust
 src-tauri/target/
-src-tauri/gen/
+src-tauri/gen/schemas/
+
+# The generated Xcode project is committed (it carries the entitlements and
+# Info.plist edits the iOS app needs), but its build output is not.
+src-tauri/gen/apple/build/
+src-tauri/gen/apple/Externals/
+src-tauri/gen/apple/*.xcodeproj/xcuserdata/
+src-tauri/gen/apple/*.xcodeproj/project.xcworkspace/xcuserdata/
+src-tauri/gen/apple/Pods/
 
 # Python
 medical_rag_project/venv/
@@ -18,10 +26,18 @@ __pycache__/
 .env
 *.env
 medical_rag_project/.env
+# Backups/varianten: *.env matcht .env.bak NIET, dus expliciet
+.env.*
+*.env.*
+!.env.example
 
 # Data (PDFs, embeddings, generated chunks) — source code only
 medical_rag_project/data/
 medical_rag_project/projects/
+# Genormaliseerde chunks + uploadmanifest zijn afgeleid van projects/ — altijd
+# opnieuw te genereren met scripts/0_normalize_and_id.py. Het CONTROLEBESTAND
+# guidelines_registry.json wordt wel gecommit: dat is handmatig onderhouden.
+medical_rag_project/normalized/
 
 # Tooling
 .projectradar.json

@@ -1,0 +1,10 @@
+{
+  "identifier": "mobile",
+  "description": "iOS viewer: read-only, so only opening a link or the PDF in Files.",
+  "platforms": ["iOS", "android"],
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "opener:allow-open-url"
+  ]
+}

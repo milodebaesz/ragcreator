@@ -1,9 +1,11 @@
 {
   "identifier": "default",
-  "description": "Default capabilities for RAGCreator",
+  "description": "Desktop capabilities: pipeline, editing and file dialogs.",
+  "platforms": ["macOS", "windows", "linux"],
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "dialog:allow-save"
   ]
 }
