@@ -2,16 +2,20 @@
   import { tick } from 'svelte'
   import { invoke } from '@tauri-apps/api/core'
   import { activeProject } from './stores.js'
+  import ReferenceList from './ReferenceList.svelte'
+  import PdfViewer from './PdfViewer.svelte'
 
   const ALL = 100000
   const REC_CLASSES = ['Class I', 'Class IIa', 'Class IIb', 'Class III']
-  const EVIDENCE_LEVELS = ['A', 'B', 'C', 'NR']
+  // ESC grades therapy/prevention as A/B1/B2/C since 2026, diagnostics as A/B/C.
+  const EVIDENCE_LEVELS = ['A', 'B1', 'B2', 'B', 'C', 'NR']
   const NO_TABLE_KEY = '__none__'
 
   let total = 0
   let items = []
   let loading = false
   let onlyUnapproved = false
+  let loadErr = ''
 
   let editingId = null
   let draft = null
@@ -21,6 +25,13 @@
   let errMsg = ''
 
   let collapsedKeys = new Set()
+
+  // Chunk shown in the PDF source viewer, null when the viewer is closed.
+  let pdfChunk = null
+
+  let exportOpen = false
+  let exporting = false
+  let exportMsg = ''
 
   $: if ($activeProject) load()
 
@@ -74,6 +85,7 @@
   async function load() {
     if (!$activeProject) return
     loading = true
+    loadErr = ''
     closeEditor()
     try {
       const res = await invoke('get_chunks', {
@@ -87,7 +99,9 @@
       collapsedKeys = new Set(groupItems(items).map(g => g.key))
     } catch (e) {
       console.error(e)
+      loadErr = String(e)
       items = []
+      total = 0
     } finally {
       loading = false
     }
@@ -138,6 +152,8 @@
 
   function evidenceColor(ev) {
     if (ev === 'A') return 'ev-a'
+    if (ev === 'B1') return 'ev-b1'
+    if (ev === 'B2') return 'ev-b2'
     if (ev === 'B') return 'ev-b'
     if (ev === 'C') return 'ev-c'
     return 'ev-nr'
@@ -268,6 +284,25 @@
     confirmingDelete = true
   }
 
+  async function runExport(format, approvedOnly) {
+    exportOpen = false
+    exporting = true
+    exportMsg = ''
+    try {
+      const path = await invoke('export_chunks', {
+        project: $activeProject,
+        format,
+        approvedOnly,
+      })
+      exportMsg = path ? `Geëxporteerd naar ${path}` : ''
+    } catch (e) {
+      exportMsg = String(e)
+    } finally {
+      exporting = false
+      if (exportMsg) setTimeout(() => { exportMsg = '' }, 6000)
+    }
+  }
+
   async function deleteDraft() {
     if (!draft) return
     deleting = true
@@ -306,15 +341,43 @@
       </div>
     {/if}
 
+    <div class="export-wrap">
+      <button class="btn-add" on:click={() => exportOpen = !exportOpen} disabled={!$activeProject || exporting}>
+        {exporting ? 'Exporteren…' : '↓ Exporteren'}
+      </button>
+      {#if exportOpen}
+        <!-- svelte-ignore a11y-click-events-have-key-events -->
+        <!-- svelte-ignore a11y-no-static-element-interactions -->
+        <div class="export-backdrop" on:click={() => exportOpen = false}></div>
+        <div class="export-menu">
+          <span class="export-head">Alle aanbevelingen</span>
+          <button on:click={() => runExport('csv', false)}>CSV — voor Excel</button>
+          <button on:click={() => runExport('md', false)}>Markdown — leesbaar document</button>
+          <button on:click={() => runExport('json', false)}>JSON — ruwe chunks</button>
+          <span class="export-head">Alleen geaccordeerd</span>
+          <button on:click={() => runExport('csv', true)}>CSV</button>
+          <button on:click={() => runExport('md', true)}>Markdown</button>
+          <button on:click={() => runExport('json', true)}>JSON</button>
+        </div>
+      {/if}
+    </div>
+
     <button class="btn-add" on:click={addNew} disabled={!$activeProject}>+ Nieuwe aanbeveling</button>
   </div>
+
+  {#if exportMsg}
+    <p class="export-msg">{exportMsg}</p>
+  {/if}
 
   {#if loading}
     <div class="loading-state">Laden…</div>
   {:else if items.length === 0}
     <div class="empty-state">
       <div class="empty-icon">◈</div>
-      {#if onlyUnapproved}
+      {#if loadErr}
+        <p>Chunks konden niet worden geladen.</p>
+        <p class="err-msg">{loadErr}</p>
+      {:else if onlyUnapproved}
         <p>Alles is geaccordeerd. Niets meer te reviewen op deze pagina.</p>
       {:else}
         <p>Geen chunks gevonden. Voer stap 2 uit om aanbevelingen te extraheren.</p>
@@ -443,6 +506,9 @@
                             <div class="edit-meta">
                               <span class="detail-label">Sectie</span>
                               <span class="detail-val">{draft.section || '—'}</span>
+                              <button class="btn-source" on:click={() => pdfChunk = chunk}>
+                                📄 Toon in PDF
+                              </button>
                             </div>
 
                             <label class="approve-field">
@@ -450,19 +516,7 @@
                               Geaccordeerd
                             </label>
 
-                            {#if draft.references?.length > 0}
-                              <div class="detail-section">
-                                <span class="detail-label">Opgeloste referenties ({draft.references.length})</span>
-                                <ul class="ref-list">
-                                  {#each draft.references.slice(0,5) as ref}
-                                    <li><span class="ref-num">{ref.id}</span> {ref.text}</li>
-                                  {/each}
-                                  {#if draft.references.length > 5}
-                                    <li class="ref-more">+{draft.references.length - 5} meer</li>
-                                  {/if}
-                                </ul>
-                              </div>
-                            {/if}
+                            <ReferenceList references={draft.references} refIds={chunk.metadata.ref_ids} />
 
                             {#if errMsg}
                               <p class="err-msg">{errMsg}</p>
@@ -498,6 +552,10 @@
   {/if}
 </div>
 
+{#if pdfChunk}
+  <PdfViewer chunk={pdfChunk} on:close={() => pdfChunk = null} />
+{/if}
+
 <style>
   .results {
     padding: 24px 28px;
@@ -525,6 +583,64 @@
     font-size: 11px;
     font-weight: 600;
   }
+  .export-wrap { position: relative; margin-left: auto; }
+  .export-wrap .btn-add { margin-left: 0; }
+
+  /* Sits under the menu so a click anywhere else dismisses it. */
+  .export-backdrop { position: fixed; inset: 0; z-index: 9; }
+
+  .export-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 10;
+    min-width: 236px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+  }
+  .export-head {
+    padding: 7px 10px 4px;
+    font-size: 10.5px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--text-3);
+  }
+  .export-menu button {
+    padding: 7px 10px;
+    border-radius: var(--radius);
+    text-align: left;
+    font-size: 12.5px;
+    color: var(--text-2);
+    transition: background .12s, color .12s;
+  }
+  .export-menu button:hover { background: var(--bg-hover); color: var(--text-1); }
+
+  .export-msg {
+    flex-shrink: 0;
+    font-size: 12px;
+    color: var(--text-2);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 7px 11px;
+    user-select: text;
+  }
+
+  .btn-source {
+    margin-left: auto;
+    padding: 5px 11px;
+    border-radius: var(--radius);
+    border: 1px solid var(--accent);
+    color: var(--accent-h);
+    font-size: 11.5px;
+    font-weight: 600;
+    transition: background .12s;
+  }
+  .btn-source:hover { background: var(--accent-dim); }
+
   .btn-add {
     margin-left: auto;
     padding: 7px 14px;
@@ -744,6 +860,8 @@
   .class3  { background: #a8453a; color: #fff1ef; }
   .neutral { background: var(--bg-hover);       color: var(--text-1); }
   .ev-a    { background: var(--accent);         color: #fff; }
+  .ev-b1   { background: #35748f;               color: #eaf7fc; }
+  .ev-b2   { background: #4c6272;               color: #eaf2f7; }
   .ev-b    { background: #3d6a80;               color: #eaf7fc; }
   .ev-c    { background: #5c5566;               color: #f2eff5; }
   .ev-nr   { background: var(--bg-hover); color: var(--text-2); }
@@ -796,22 +914,6 @@
   .detail-section { display: flex; flex-direction: column; gap: 4px; }
   .detail-label   { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
   .detail-val     { font-size: 13px; color: var(--text-2); }
-
-  .ref-list { list-style: none; display: flex; flex-direction: column; gap: 4px; }
-  .ref-list li { font-size: 12px; color: var(--text-2); }
-  .ref-num {
-    display: inline-block;
-    min-width: 22px;
-    padding: 0 4px;
-    margin-right: 4px;
-    border-radius: 3px;
-    background: var(--bg-hover);
-    color: var(--text-3);
-    font-family: var(--mono);
-    font-size: 11px;
-    text-align: center;
-  }
-  .ref-more { color: var(--text-3); font-style: italic; }
 
   .err-msg { font-size: 12px; color: #d6897b; }
 

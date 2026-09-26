@@ -2,7 +2,7 @@
   import { invoke } from '@tauri-apps/api/core'
   import {
     activeProject, envConfig, projectStatus,
-    stepStates, stepLogs,
+    activeStepStates, activeStepLogs,
     resetStepLogs, setStepState, appendStepLog,
   } from './stores.js'
 
@@ -26,25 +26,31 @@
     {
       num: 3,
       name: 'QA-paren genereren',
-      desc: 'Genereert klinische vraag/antwoord-paren via GPT-4.1-mini.',
-      input: 'rag_chunks.json',
-      output: 'qa_pairs.json',
+      desc: 'Normaliseert eerst (stabiele ID\'s, goedkeuringspoort) en genereert dan ' +
+            'per goedgekeurde aanbeveling drie zoekingangen: een Engelse vraag, een ' +
+            'Nederlandse vraag en een korte casusbeschrijving.',
+      input: 'normalized/<slug>.chunks.json',
+      output: 'qa_pairs.json + normalized/<slug>.qa.json',
       needsPdf: false, needsOpenAI: true, needsMongo: false,
     },
     {
       num: 4,
       name: 'Embeddings',
-      desc: 'Maakt vectorembeddings (text-embedding-3-large, 3072 dim).',
-      input: 'rag_chunks.json',
-      output: 'embeddings.json',
+      desc: 'Embedt alleen de goedgekeurde aanbevelingen plus hun Q&A-vragen ' +
+            '(text-embedding-3-large, 3072 dim). Ongewijzigde teksten worden ' +
+            'hergebruikt, dus opnieuw draaien kost niets.',
+      input: 'normalized/<slug>.chunks.json + .qa.json',
+      output: 'normalized/<slug>.embeddings.json + .qa-embeddings.json',
       needsPdf: false, needsOpenAI: true, needsMongo: false,
     },
     {
       num: 5,
       name: 'Upload MongoDB',
-      desc: 'Uploadt ingebedde documenten naar MongoDB Atlas via upsert.',
-      input: 'embeddings.json',
-      output: 'MongoDB collection',
+      desc: 'Upsert op stabiele ID\'s naar rag_db.rag_chunks en rag_db.qa_pairs. ' +
+            'Alleen goedgekeurde aanbevelingen; afgekeurde gaan nooit mee. ' +
+            'Verwijdert niets en overschrijft geen andere richtlijn.',
+      input: 'normalized/<slug>.embeddings.json + .qa-embeddings.json',
+      output: 'rag_db.rag_chunks + rag_db.qa_pairs',
       needsPdf: false, needsOpenAI: false, needsMongo: true,
     },
   ]
@@ -53,16 +59,20 @@
   let pickingPdf = false
   let refreshing = false
 
-  $: logs = $stepLogs
+  // The pipeline is per guideline: these hold only the active project's state,
+  // and the open log panel is reset when you switch to another project.
+  $: states = $activeStepStates
+  $: logs   = $activeStepLogs
+  $: if ($activeProject) openLogStep = null
 
   // Precompute all per-step view state from the stores directly (rather than
   // reading them through closures inside the #each block). Svelte's
   // per-block dependency tracking can't see into function calls, so deriving
-  // this here — where $projectStatus/$stepStates/$envConfig are referenced
+  // this here — where $projectStatus/states/$envConfig are referenced
   // literally — is what makes the UI actually update when a step finishes.
   $: stepRows = STEPS.map(step => {
     const st = $projectStatus
-    const s  = $stepStates[step.num]
+    const s  = states[step.num]
 
     const done = (() => {
       switch (step.num) {
@@ -104,14 +114,18 @@
   })
 
   async function runStep(step) {
-    if ($stepStates[step.num] === 'running') return
-    resetStepLogs(step.num)
-    setStepState(step.num, 'running')
+    if (states[step.num] === 'running') return
+    // Capture the project this run belongs to: the user may switch guidelines
+    // while the step is still running, and its state must stay with its own.
+    const project = $activeProject
+    if (!project) return
+    resetStepLogs(project, step.num)
+    setStepState(project, step.num, 'running')
     openLogStep = step.num
 
     try {
       await invoke('run_pipeline_step', {
-        project:    $activeProject,
+        project,
         step:       step.num,
         openaiKey:  $envConfig.openai_key  || null,
         mongodbUri: $envConfig.mongodb_uri || null,
@@ -121,8 +135,8 @@
       // Step actually finishes later — 'pipeline-done' (handled in App.svelte)
       // sets the step state and refreshes project status when the process exits.
     } catch (e) {
-      setStepState(step.num, 'error')
-      appendStepLog(step.num, `FOUT: ${e}`, true)
+      setStepState(project, step.num, 'error')
+      appendStepLog(project, step.num, `FOUT: ${e}`, true)
     }
   }
 

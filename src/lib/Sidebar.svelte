@@ -1,6 +1,6 @@
 <script>
   import { invoke } from '@tauri-apps/api/core'
-  import { config, activeProject, activeTab, projectNames } from './stores.js'
+  import { config, activeProject, activeTab, projectNames, clearProjectPipeline } from './stores.js'
 
   let showNewModal = false
   let newName = ''
@@ -46,6 +46,9 @@
     try {
       const cfg = await invoke('delete_project', { name })
       config.set(cfg)
+      // Pipeline state is keyed by project name — drop it so a later project
+      // with the same name doesn't inherit this one's steps and logs.
+      clearProjectPipeline(name)
       activeProject.set(cfg.active || null)
     } catch (e) {
       console.error(e)

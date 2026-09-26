@@ -1,6 +1,8 @@
 <script>
   import { invoke } from '@tauri-apps/api/core'
   import { activeProject } from './stores.js'
+  import ReferenceList from './ReferenceList.svelte'
+  import PdfViewer from './PdfViewer.svelte'
 
   let query      = ''
   let classFilter   = ''
@@ -10,6 +12,7 @@
   let searching  = false
   let searched   = false
   let expanded   = null
+  let pdfChunk   = null
 
   const CLASS_OPTIONS   = ['', 'Class I', 'Class IIa', 'Class IIb', 'Class III']
   const DISEASE_OPTIONS = ['', 'HCM', 'DCM', 'ARVC', 'RCM', 'CAD', 'HF', 'AF', 'VT', 'VHD', 'ACS', 'general']
@@ -167,14 +170,32 @@
             )}
           </p>
 
-          {#if expanded === chunk.id && chunk.metadata.section}
-            <p class="result-section">Sectie: {chunk.metadata.section}</p>
+          {#if expanded === chunk.id}
+            <!-- svelte-ignore a11y-click-events-have-key-events -->
+            <!-- svelte-ignore a11y-no-static-element-interactions -->
+            <div class="result-detail" on:click|stopPropagation>
+              <div class="detail-top">
+                {#if chunk.metadata.section}
+                  <span class="result-section">Sectie: {chunk.metadata.section}</span>
+                {/if}
+                <button class="btn-source" on:click={() => pdfChunk = chunk}>📄 Toon in PDF</button>
+              </div>
+              <ReferenceList
+                references={chunk.metadata.references ?? []}
+                refIds={chunk.metadata.ref_ids ?? []}
+                collapsedAfter={3}
+              />
+            </div>
           {/if}
         </div>
       {/each}
     {/if}
   </div>
 </div>
+
+{#if pdfChunk}
+  <PdfViewer chunk={pdfChunk} on:close={() => pdfChunk = null} />
+{/if}
 
 <style>
   .search-page {
@@ -347,7 +368,6 @@
     white-space: pre-wrap;
   }
   .result-section {
-    margin-top: 8px;
     font-size: 11px;
     color: var(--text-3);
     font-style: italic;
@@ -358,4 +378,26 @@
     color: var(--accent-h);
     border-radius: 2px;
   }
+
+  .result-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    cursor: default;
+  }
+  .detail-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .btn-source {
+    margin-left: auto;
+    padding: 5px 11px;
+    border-radius: var(--radius);
+    border: 1px solid var(--accent);
+    color: var(--accent-h);
+    font-size: 11.5px;
+    font-weight: 600;
+    transition: background .12s;
+  }
+  .btn-source:hover { background: var(--accent-dim); }
 </style>

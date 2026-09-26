@@ -1,0 +1,101 @@
+{
+  "_comment": [
+    "CONTROLEBESTAND — dit bepaalt wat er uiteindelijk in de RAG-database terechtkomt.",
+    "Niets wordt geupload wat hier niet expliciet op include:true staat.",
+    "Bewerk dit bestand met de hand; scripts lezen het, maar schrijven het nooit.",
+    "",
+    "upload_policy per richtlijn:",
+    "  approved_only      = alleen chunks met metadata.approved === true   (veiligst)",
+    "  include_unreviewed = approved true OF nog niet beoordeeld (null)",
+    "  blocked            = nooit uploaden, ongeacht approved-status",
+    "",
+    "HARDE REGEL, niet te overrulen: metadata.approved === false gaat NOOIT naar de",
+    "database. Die heb je bewust afgekeurd in de RAGCreator-UI."
+  ],
+
+  "defaults": {
+    "upload_policy": "approved_only"
+  },
+
+  "guidelines": {
+    "ESC Hartfalen": {
+      "slug": "esc-hf",
+      "canonical_name": "ESC Hartfalen",
+      "year": "2026",
+      "source": "projects/ESC Hartfalen",
+      "include": true,
+      "upload_policy": "approved_only",
+      "note": "125/125 beoordeeld en goedgekeurd. Heeft als enige ook qa_pairs.json."
+    },
+
+    "ESC CCS": {
+      "slug": "esc-ccs",
+      "canonical_name": "ESC CCS",
+      "year": "2024",
+      "source": "projects/ESC CCS",
+      "include": true,
+      "upload_policy": "approved_only",
+      "note": "Nooit beoordeeld: 190/190 approved=null. De 222 oude productiedocumenten (incl. 7 samengevoegde, 4 rec_manual_*, 28 summaries) staan sinds 2026-09-14 in rag_db.rag_chunks_quarantine. Beoordeel in de UI en draai stap 3-5; terugzetten kan met scripts/audit_database.py --restore esc-ccs."
+    },
+
+    "ESC Valvular": {
+      "slug": "esc-vhd",
+      "canonical_name": "ESC Valvular",
+      "year": "2025",
+      "source": "projects/ESC Valvular",
+      "include": true,
+      "upload_policy": "approved_only",
+      "note": "94 chunks, nog niet beoordeeld."
+    },
+
+    "ESC Syncope": {
+      "slug": "esc-syn",
+      "canonical_name": "ESC Syncope",
+      "year": "2018",
+      "source": "projects/ESC Syncope",
+      "include": true,
+      "upload_policy": "approved_only",
+      "note": "78 chunks, nog niet beoordeeld."
+    },
+
+    "ESC LE": {
+      "slug": "esc-pe",
+      "canonical_name": "ESC LE",
+      "year": "2019",
+      "source": "projects/ESC LE",
+      "include": true,
+      "upload_policy": "approved_only",
+      "note": "Actief beoordeeld: 3 goedgekeurd, 72 afgekeurd. Die 72 blijven eruit."
+    },
+
+    "ESC ACS": {
+      "slug": "esc-acs",
+      "canonical_name": "ESC ACS",
+      "year": "2023",
+      "source": "data/ACS",
+      "include": true,
+      "upload_policy": "approved_only",
+      "note": "259 chunks, uniek — zit in geen enkel ander project. Ligt nog in data/ in plaats van projects/; het pad hierboven werkt, verplaatsen is niet nodig."
+    },
+
+    "ARCHIEF: data/CCS": {
+      "slug": "arch-ccs",
+      "canonical_name": "CCS (archief)",
+      "year": "2024",
+      "source": "data/CCS",
+      "include": false,
+      "upload_policy": "blocked",
+      "note": "Oudere extractie van ESC CCS 2024 (194 vs 190). Uitgesloten om dubbele versies in de zoekresultaten te voorkomen."
+    },
+
+    "ARCHIEF: data/Valvular": {
+      "slug": "arch-vhd",
+      "canonical_name": "Valvular (archief)",
+      "year": "2025",
+      "source": "data/Valvular",
+      "include": false,
+      "upload_policy": "blocked",
+      "note": "Oudere extractie van ESC Valvular 2025 (109 vs 94). Uitgesloten."
+    }
+  }
+}

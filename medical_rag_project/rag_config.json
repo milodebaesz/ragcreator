@@ -1,31 +1,42 @@
 {
-  "active": "Valvular",
+  "active": "ESC LE",
   "projects": [
-    "default",
-    "CCS",
-    "Valvular",
-    "ACS"
+    "ESC Hartfalen",
+    "ESC CCS",
+    "ESC Syncope",
+    "ESC Valvular",
+    "ESC LE"
   ],
   "project_meta": {
-    "Valvular": {
+    "ESC Syncope": {
+      "year": "2018",
+      "pdf_path": "/Users/mkdebie/Library/Mobile Documents/com~apple~CloudDocs/Richtlijnen ESC/ESC Syncope 2018.pdf",
+      "pdf_name": "ESC Syncope 2018.pdf"
+    },
+    "ESC LE": {
+      "year": "2019",
+      "pdf_path": "/Users/mkdebie/Library/Mobile Documents/com~apple~CloudDocs/Richtlijnen ESC/ESC LE 2019.pdf",
+      "pdf_name": "ESC LE 2019.pdf"
+    },
+    "ESC Valvular": {
       "year": "2025",
-      "pdf_path": "/Users/mkb/Desktop/ehaf194.pdf",
-      "pdf_name": "ehaf194.pdf"
+      "pdf_path": "/Users/mkdebie/Library/Mobile Documents/com~apple~CloudDocs/Richtlijnen ESC/ESC Valvular 2025.pdf",
+      "pdf_name": "ESC Valvular 2025.pdf"
     },
     "CCS2024": {
       "year": "2024",
       "pdf_path": null,
       "pdf_name": null
     },
-    "ACS": {
-      "year": "2023",
-      "pdf_path": null,
-      "pdf_name": null
+    "ESC Hartfalen": {
+      "year": "2026",
+      "pdf_path": "/Users/mkdebie/Library/Mobile Documents/com~apple~CloudDocs/Richtlijnen ESC/ESC_HearFail_2026.pdf",
+      "pdf_name": "ESC_HearFail_2026.pdf"
     },
-    "CCS": {
+    "ESC CCS": {
       "year": "2024",
-      "pdf_path": null,
-      "pdf_name": null
+      "pdf_path": "/Users/mkdebie/Library/Mobile Documents/com~apple~CloudDocs/Richtlijnen ESC/ESC CCS 2024.pdf",
+      "pdf_name": "ESC CCS 2024.pdf"
     }
   }
 }

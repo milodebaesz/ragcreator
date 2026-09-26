@@ -5,7 +5,9 @@
 
   import Sidebar   from './lib/Sidebar.svelte'
   import Pipeline  from './lib/Pipeline.svelte'
+  import GuidelineInfo from './lib/GuidelineInfo.svelte'
   import Results   from './lib/Results.svelte'
+  import QaPairs   from './lib/QaPairs.svelte'
   import Search    from './lib/Search.svelte'
   import Settings  from './lib/Settings.svelte'
 
@@ -31,15 +33,18 @@
     }
 
     // Global pipeline event listeners
+    // Events carry the project they belong to: state is filed under that
+    // project so a step running in one guideline never shows up in another.
     await listen('pipeline-log', ({ payload }) => {
-      appendStepLog(payload.step, payload.line, payload.is_stderr)
+      appendStepLog(payload.project, payload.step, payload.line, payload.is_stderr)
     })
 
     await listen('pipeline-done', ({ payload }) => {
-      setStepState(payload.step, payload.success ? 'done' : 'error')
+      setStepState(payload.project, payload.step, payload.success ? 'done' : 'error')
       // Status can only change once the step process has actually exited —
-      // refresh here instead of guessing with a timeout.
-      if ($activeProject) refreshStatus($activeProject)
+      // refresh here instead of guessing with a timeout. Only the visible
+      // project's status is on screen, so only refresh for that one.
+      if (payload.project === $activeProject) refreshStatus($activeProject)
     })
   })
 
@@ -73,7 +78,9 @@
       <nav class="tabbar">
         {#each [
           { id:'pipeline', label:'Pipeline' },
+          { id:'info',     label:'Richtlijn' },
           { id:'results',  label:'Resultaten' },
+          { id:'qa',       label:'Q&A' },
           { id:'search',   label:'Zoeken' },
           { id:'settings', label:'Instellingen' },
         ] as tab}
@@ -89,8 +96,12 @@
       <div class="tab-content">
         {#if $activeTab === 'pipeline'}
           <Pipeline />
+        {:else if $activeTab === 'info'}
+          <GuidelineInfo />
         {:else if $activeTab === 'results'}
           <Results />
+        {:else if $activeTab === 'qa'}
+          <QaPairs />
         {:else if $activeTab === 'search'}
           <Search />
         {:else if $activeTab === 'settings'}
