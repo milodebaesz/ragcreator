@@ -100,8 +100,8 @@
         {#if filtering}
           Niets gevonden. Pas je zoekterm aan.
         {:else}
-          Nog geen Q&amp;A-paren voor deze richtlijn. Draai stap 3 op de Mac en
-          synchroniseer opnieuw naar iCloud.
+          Nog geen Q&amp;A-paren voor deze richtlijn. Draai stap 3 op de Mac; ze
+          verschijnen hier zodra iCloud ze heeft binnengehaald.
         {/if}
       </p>
     {/if}

@@ -7,8 +7,13 @@
   // section a hit lives in.
   import { invoke } from '@tauri-apps/api/core'
   import { renderMarkdown } from '../markdown.js'
+  import PdfReader from './PdfReader.svelte'
+  import { rememberedPage } from './pdf.js'
 
   export let project
+
+  /** 'pdf' reads the guideline as published; 'text' is searchable. */
+  let mode = 'pdf'
 
   let outline = []
   let hits = []
@@ -81,7 +86,18 @@
 </script>
 
 <div class="screen">
-  {#if section}
+  <div class="modes" role="tablist">
+    <button class:active={mode === 'pdf'} role="tab" aria-selected={mode === 'pdf'} on:click={() => (mode = 'pdf')}>PDF</button>
+    <button class:active={mode === 'text'} role="tab" aria-selected={mode === 'text'} on:click={() => (mode = 'text')}>Tekst &amp; zoeken</button>
+  </div>
+
+  {#if mode === 'pdf'}
+    <div class="pdf-pane">
+      {#key project}
+        <PdfReader {project} page={rememberedPage(project)} />
+      {/key}
+    </div>
+  {:else if section}
     <div class="reader-bar">
       <button class="back" on:click={back}>‹ Inhoud</button>
       <div class="nav">
@@ -148,6 +164,29 @@
 
 <style>
   .screen { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+
+  .modes {
+    flex-shrink: 0;
+    display: flex;
+    gap: 4px;
+    margin: 8px 16px 0;
+    padding: 3px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+  }
+  .modes button {
+    flex: 1 1 0;
+    text-align: center;
+    min-height: 36px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-3);
+    border-radius: var(--radius);
+  }
+  .modes button.active { background: var(--accent-dim); color: var(--accent-h); }
+
+  .pdf-pane { flex: 1; min-height: 0; margin-top: 8px; }
 
   .bar {
     flex-shrink: 0;

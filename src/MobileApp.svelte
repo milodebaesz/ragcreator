@@ -9,6 +9,8 @@
   import MobileGuideline from './lib/mobile/MobileGuideline.svelte'
   import MobileQaPairs from './lib/mobile/MobileQaPairs.svelte'
   import MobileOverview from './lib/mobile/MobileOverview.svelte'
+  import PdfReader from './lib/mobile/PdfReader.svelte'
+  import { pdfView } from './lib/mobile/pdf.js'
 
   /** StorageInfo from `init_storage`, resolved before this component mounts. */
   export let storage
@@ -72,8 +74,8 @@
         <div class="mark">RC</div>
         <p class="empty-title">Nog geen richtlijn</p>
         <p class="empty-body">
-          Open RAGCreator op je Mac en kies <strong>Synchroniseer naar iCloud</strong>
-          bij Instellingen. Zodra iCloud klaar is met synchroniseren verschijnt de
+          Open RAGCreator op je Mac: die zet zijn projecten in de iCloud-map van
+          RAGCreator. Zodra iCloud klaar is met synchroniseren verschijnt de
           richtlijn hier.
         </p>
         {#if !storage.using_icloud}
@@ -94,6 +96,17 @@
       <MobileOverview {project} {storage} />
     {/if}
   </main>
+
+  {#if $pdfView}
+    <div class="pdf-overlay">
+      <PdfReader
+        project={$pdfView.project}
+        page={$pdfView.page}
+        closable
+        on:close={() => pdfView.set(null)}
+      />
+    </div>
+  {/if}
 
   <nav class="tabbar">
     {#each TABS as t}
@@ -229,6 +242,14 @@
   .tick { color: var(--accent-h); }
 
   .content { flex: 1; overflow: hidden; }
+
+  /* Over everything, tab bar included: a PDF opened from a recommendation is
+     a detour, and "Sluit" returns to exactly where the list was. */
+  .pdf-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+  }
 
   .tabbar {
     flex-shrink: 0;

@@ -3,12 +3,11 @@
 //! iOS launches a library, not a binary, so the whole setup lives here and
 //! `main.rs` is a one-line shim for desktop. The two builds differ only in
 //! which commands they expose: desktop gets the full pipeline, mobile gets a
-//! read-only viewer over the project files synced to iCloud Drive.
+//! read-only viewer. Both work on the same files in the app's iCloud Drive
+//! container — see `storage.rs`.
 
 mod commands;
 mod storage;
-#[cfg(desktop)]
-mod sync;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -41,10 +40,9 @@ pub fn run() {
             commands::open_external,
             commands::open_project_pdf,
             commands::get_pdf_location,
+            commands::read_project_pdf,
             commands::locate_in_pdf,
             commands::export_chunks,
-            sync::sync_to_icloud,
-            sync::get_icloud_status,
         ]);
 
     // No pipeline, no editing, no file dialogs: iOS has neither Python nor a
@@ -66,6 +64,7 @@ pub fn run() {
             commands::get_qa_pairs,
             commands::search_chunks,
             commands::get_pdf_location,
+            commands::read_project_pdf,
             commands::open_external,
         ]);
 

@@ -151,7 +151,10 @@
       </p>
     {/if}
 
-    {#each items as chunk (chunk.id)}
+    <!-- Chunk ids repeat across guidelines (every one has a first
+         recommendation); keyed on id alone, switching projects would reuse an
+         open card — PDF link included — for a different recommendation. -->
+    {#each items as chunk (project + '/' + chunk.id)}
       <RecCard {chunk} {project} query={query.trim()} />
     {/each}
 

@@ -35,7 +35,8 @@
       "icons/icon.icns"
     ],
     "iOS": {
-      "minimumSystemVersion": "15.0"
+      "minimumSystemVersion": "15.0",
+      "bundleVersion": "2"
     }
   }
 }

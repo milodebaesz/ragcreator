@@ -6,41 +6,54 @@ richtlijn. De pijplijn (PDF → chunks → MongoDB) blijft op de Mac.
 
 ## Hoe de twee apps met elkaar praten
 
-Er is geen server en geen netwerkverbinding tussen de apps. De Mac schrijft
-projectbestanden naar de iCloud Drive-map van RAGCreator, iOS leest daaruit.
+Er is geen server, geen netwerkverbinding en geen sync-stap tussen de apps.
+Beide werken op dezelfde bestanden in de iCloud-container van RAGCreator
+(`iCloud.com.ragcreator.app`, in iCloud Drive te zien als **RAGCreator**):
 
 ```
-Mac                                          iPhone
-───                                          ──────
-medical_rag_project/projects/<naam>/    ──►  iCloud Drive/RAGCreator/
-  rag_chunks.json      aanbevelingen           medical_rag_project/
-  guideline.md         richtlijntekst            rag_config.json
-  pdf_pages.json       paginanummers             projects/<naam>/…
-  extraction_report.txt
-  <richtlijn>.pdf      (optioneel)
+~/Library/Mobile Documents/iCloud~com~ragcreator~app/Documents/
+  medical_rag_project/
+    rag_config.json
+    projects/<naam>/      rag_chunks.json, guideline.md, qa_pairs.json,
+                          pdf_pages.json, extraction_report.txt, <richtlijn>.pdf
+    normalized/           genormaliseerde chunks, embeddings, MANIFEST
+    data/                 oudere projecten uit de registry
 ```
 
-De mapstructuur is aan beide kanten identiek. Daardoor werkt elk pad-hulpje in
-`commands.rs` op beide platforms zonder platformcheck; alleen de wortel
-verschilt, en die wordt bepaald in `src-tauri/src/storage.rs`.
+De desktop-app draait de pijplijn rechtstreeks in die map, de iOS-app leest
+eruit. De mapstructuur is aan beide kanten identiek, dus elk pad-hulpje in
+`commands.rs` werkt op beide platforms; alleen de wortel verschilt, en die wordt
+bepaald in `src-tauri/src/storage.rs`.
 
-`qa_pairs.json` gaat wel mee, maar staat in `OPTIONAL_FILES` in `sync.rs`:
-het bestand ontstaat pas als pijplijnstap 3 gedraaid heeft, en een project
-zonder Q&A-paren mag geen syncfout geven. Is de Q&A-tab leeg terwijl de rest
-gevuld is, kijk dan eerst of dat bestand in het project bestaat.
+Wat níet in iCloud staat: de Python-scripts, de venv, `.env` (API-sleutels) en
+`guidelines_registry.json` (staat in git). Die blijven in de repo; de
+desktop-app zoekt ze daar op via `storage::code_root()`, en geeft de scripts de
+datamap mee via `RAG_MED_ROOT`. Los vanuit de terminal kiezen de scripts zelf
+dezelfde map (`pipeline_common.DATA_ROOT`).
 
-Wat níet meegaat: de Python-scripts, de venv, `.env` en `embeddings.json`. De
-viewer heeft ze niet nodig en API-sleutels horen niet op een telefoon.
+### De verhuizing uit de repo
 
-### Synchroniseren
+Zolang de container niet op de Mac bestaat, werkt de desktop-app gewoon vanuit
+de repo (`medical_rag_project/` in de checkout) en meldt dat bij
+**Instellingen → Opslag & iOS-app**. Hij maakt de container niet zelf aan:
+iCloud synct geen map die hij nooit uitgedeeld heeft, dus data die daar staat
+zou veilig lijken terwijl hij alleen op deze Mac bestaat.
 
-In de desktop-app: **Instellingen → iCloud & iOS-app → Synchroniseer naar
-iCloud**. Vink aan welke richtlijnen mee moeten en of de bron-PDF meegaat.
-Ongewijzigde bestanden worden overgeslagen, dus een tweede sync na een kleine
-wijziging kopieert alleen wat echt veranderd is.
+De container verschijnt nadat de iOS-app één keer met iCloud-entitlement
+gedraaid heeft (zie *iCloud aanzetten* hieronder). Bij de eerstvolgende start
+kopieert de desktop-app `projects/`, `normalized/`, `data/` en als laatste
+`rag_config.json` naar iCloud, en zet de repo-kopie daarna opzij in
+`medical_rag_project/.pre-icloud-backup/`. Staat er al een `rag_config.json` in
+iCloud, dan wordt er niets overschreven.
 
-`rag_config.json` wordt als laatste geschreven. Tot een project daarin staat
-negeert de iOS-app de map, zodat een halve kopie nooit gelezen wordt.
+### Bestanden die iCloud nog niet gedownload heeft
+
+iOS downloadt iCloud-bestanden pas op verzoek en laat tot die tijd een
+`.naam.icloud`-placeholder staan. `storage::ensure_local` vraagt zo'n bestand op
+en wacht erop voordat het gelezen of overschreven wordt; `init_storage` vraagt
+bij het starten alles in één keer op. Zonder die stap zou een nog niet
+gedownload `rag_chunks.json` als "leeg" gelezen worden — en bij opslaan
+overschreven.
 
 ## Wat de iOS-app kan en niet kan
 
@@ -200,9 +213,11 @@ Het deployment target moet minstens 15.0 zijn; Xcode 27 weigert lager
 plekken: `project.yml` (`deploymentTarget`) en `src-tauri/tauri.conf.json`
 (`bundle.iOS.minimumSystemVersion`).
 
-#### iCloud staat nog niet aan
+#### iCloud aanzetten
 
-De build signeert met een profiel zonder iCloud-entitlements — te zien met:
+De entitlements staan in `project.yml` (onder `entitlements.properties`), zodat
+xcodegen ze niet meer leeg maakt. Of de gebouwde app ze ook echt heeft, zie je
+met:
 
 ```sh
 unzip -o src-tauri/gen/apple/build/arm64/RAGCreator.ipa -d /tmp/ipa
@@ -212,10 +227,10 @@ codesign -d --entitlements :- /tmp/ipa/Payload/RAGCreator.app
 Staan daar alleen `application-identifier` en `team-identifier`, dan is de
 container niet meegegeven en valt de app terug op zijn eigen Documents-map
 (Bestanden-app → Op mijn iPhone → RAGCreator). Dat werkt, maar dan zet je de
-projectmappen er zelf in in plaats van te synchroniseren.
+projectmappen er zelf in (`npm run ios:seed`).
 
-Aanzetten kan alleen via Xcode, omdat de iCloud-container in het Apple
-Developer-portal moet bestaan:
+De container moet één keer in het Apple Developer-portal geregistreerd worden,
+en dat gaat via Xcode:
 
 - Open `src-tauri/gen/apple/ragcreator.xcodeproj`.
 - **Signing & Capabilities** → **+ Capability → iCloud** → vink *iCloud
@@ -225,14 +240,15 @@ Developer-portal moet bestaan:
 
 ## Waar dingen kunnen misgaan
 
-**"Nog geen richtlijn" terwijl je net gesynchroniseerd hebt.** iCloud is
-asynchroon. Kijk in de Bestanden-app of `RAGCreator/medical_rag_project/` er al
-staat; de eerste sync van een PDF van enkele megabytes kan even duren.
+**"Nog geen richtlijn" op de iPhone.** iCloud is asynchroon. Kijk in de
+Bestanden-app of `RAGCreator/medical_rag_project/` er al staat; de eerste upload
+van enkele tientallen megabytes aan PDF's en embeddings kan even duren.
 
-**De map verschijnt niet in iCloud Drive op de Mac.** De container bestaat pas
-nadat de iOS-app minstens één keer gedraaid heeft met de juiste entitlement.
-`get_icloud_status` laat het pad zien waar de desktop-app naartoe zou schrijven;
-tot die tijd maakt hij die map zelf aan, wat werkt zodra de container bestaat.
+**De desktop-app blijft "data staat nog in de repo" melden.** De container
+bestaat pas nadat de iOS-app minstens één keer gedraaid heeft met de juiste
+entitlement. Controleer met `codesign` (hierboven) of die in de build zit, start
+de app op de iPhone, wacht tot `iCloud~com~ragcreator~app` in
+`~/Library/Mobile Documents/` staat en start de desktop-app opnieuw.
 
 **De PDF opent niet.** De knop gebruikt de `shareddocuments://`-URL van de
 Bestanden-app. Werkt dat niet op jouw iOS-versie, dan staat het volledige pad

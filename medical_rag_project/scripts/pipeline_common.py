@@ -28,8 +28,35 @@ from collections import Counter
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent
+# De registry is handmatig onderhouden en staat in git, dus naast de scripts.
 REGISTRY_PATH = PROJECT_ROOT / "guidelines_registry.json"
-OUTPUT_DIR = PROJECT_ROOT / "normalized"
+
+# iCloud-container van RAGCreator zoals macOS hem op schijf zet; moet gelijk
+# blijven aan ICLOUD_CONTAINER in src-tauri/src/storage.rs.
+ICLOUD_MED_ROOT = (
+    Path.home() / "Library" / "Mobile Documents" / "iCloud~com~ragcreator~app"
+    / "Documents" / "medical_rag_project"
+)
+
+
+def _data_root() -> Path:
+    """
+    Map met projects/, normalized/, data/ en rag_config.json.
+
+    De app geeft hem mee via RAG_MED_ROOT. Draai je een script los vanuit de
+    terminal, dan wordt dezelfde keuze gemaakt als de app maakt: de iCloud-map
+    zodra de data daarheen verhuisd is, anders de repo.
+    """
+    env = os.getenv("RAG_MED_ROOT")
+    if env:
+        return Path(env)
+    if (ICLOUD_MED_ROOT / "rag_config.json").exists():
+        return ICLOUD_MED_ROOT
+    return PROJECT_ROOT
+
+
+DATA_ROOT = _data_root()
+OUTPUT_DIR = DATA_ROOT / "normalized"
 
 # ── Gecontroleerde vocabulaires ──────────────────────────────────────────────
 VALID_CLASSES = {"Class I", "Class IIa", "Class IIb", "Class III"}
@@ -280,7 +307,7 @@ def resolve_project_key(guidelines: dict, title: str | None = None) -> str:
 
 # ── Normaliseren van één richtlijn ───────────────────────────────────────────
 def normalize_project(key: str, entry: dict) -> tuple[list[dict], Counter]:
-    src = PROJECT_ROOT / entry["source"] / "rag_chunks.json"
+    src = DATA_ROOT / entry["source"] / "rag_chunks.json"
     if not src.exists():
         raise PipelineError(
             f"{src} bestaat niet. Draai eerst stap 2 (structuur extractie)."

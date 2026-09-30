@@ -5,6 +5,7 @@
   // looks and behaves the same wherever it turns up.
   import { invoke } from '@tauri-apps/api/core'
   import { parseReference, pubmedUrl, doiUrl, scholarUrl, shortCitation } from '../references.js'
+  import { openPdf } from './pdf.js'
 
   export let chunk
   export let project
@@ -130,7 +131,9 @@
               <span class="pdf-page dim">pagina onbekend</span>
             {/if}
           </div>
-          <button class="pdf-btn" on:click={() => openUrl(pdf.files_url)}>Open in Bestanden</button>
+          <button class="pdf-btn" on:click={() => openPdf(project, pdf.page)}>
+            {pdf.page ? `Open op p. ${pdf.page}` : 'Open PDF'}
+          </button>
         </div>
       {/if}
 

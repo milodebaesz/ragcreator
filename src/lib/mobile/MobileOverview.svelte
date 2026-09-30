@@ -123,7 +123,7 @@
 
     {#if storage}
       <section class="block">
-        <h3 class="block-title">Synchronisatie</h3>
+        <h3 class="block-title">Opslag</h3>
         <div class="fact">
           <span>Bron</span>
           <span>{storage.using_icloud ? 'iCloud Drive' : 'Lokaal (Bestanden)'}</span>
