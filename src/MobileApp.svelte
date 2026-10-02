@@ -9,6 +9,7 @@
   import MobileGuideline from './lib/mobile/MobileGuideline.svelte'
   import MobileQaPairs from './lib/mobile/MobileQaPairs.svelte'
   import MobileOverview from './lib/mobile/MobileOverview.svelte'
+  import MobileAsk from './lib/mobile/MobileAsk.svelte'
   import PdfReader from './lib/mobile/PdfReader.svelte'
   import { pdfView } from './lib/mobile/pdf.js'
 
@@ -16,6 +17,7 @@
   export let storage
 
   const TABS = [
+    { id: 'ask',   label: 'Vraag' },
     { id: 'recs',  label: 'Aanbevelingen' },
     { id: 'text',  label: 'Richtlijn' },
     { id: 'qa',    label: 'Q&A' },
@@ -86,6 +88,8 @@
         {/if}
         {#if error}<p class="empty-body err">{error}</p>{/if}
       </div>
+    {:else if tab === 'ask'}
+      <MobileAsk {project} />
     {:else if tab === 'recs'}
       <MobileRecommendations {project} />
     {:else if tab === 'text'}
@@ -266,11 +270,11 @@
     min-width: 0;
     text-align: center;
     min-height: 52px;
-    /* Four tabs now; "Aanbevelingen" is the widest and must still fit on one
+    /* Five tabs now; "Aanbevelingen" is the widest and must still fit on one
        line at 390pt without wrapping. */
-    font-size: 11.5px;
+    font-size: 10.5px;
     font-weight: 600;
-    letter-spacing: .01em;
+    letter-spacing: 0;
     white-space: nowrap;
     color: var(--text-3);
     border-top: 2px solid transparent;

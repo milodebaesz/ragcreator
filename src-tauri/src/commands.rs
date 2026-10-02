@@ -151,7 +151,7 @@ fn config_path(state: &AppState) -> PathBuf {
     med_root(state).join("rag_config.json")
 }
 
-fn project_data_dir(state: &AppState, project: &str) -> PathBuf {
+pub(crate) fn project_data_dir(state: &AppState, project: &str) -> PathBuf {
     med_root(state).join("projects").join(project)
 }
 
@@ -226,6 +226,42 @@ fn write_config(state: &AppState, config: &Config) -> Result<(), String> {
     }
     let text = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
     std::fs::write(path, text).map_err(|e| e.to_string())
+}
+
+/// Every project, in config order; the folders on disk when the config lists
+/// none (files copied onto a phone by hand).
+pub(crate) fn project_names(state: &AppState) -> Result<Vec<String>, String> {
+    let config = read_config(state)?;
+    if !config.projects.is_empty() {
+        return Ok(config.projects);
+    }
+    let mut names: Vec<String> = std::fs::read_dir(med_root(state).join("projects"))
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|e| e.path().is_dir())
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    names.sort();
+    Ok(names)
+}
+
+/// A project's JSON file, parsed. Missing is an error; callers that can live
+/// without the file use `unwrap_or_default`.
+pub(crate) fn read_project_json<T: serde::de::DeserializeOwned>(
+    state: &AppState,
+    project: &str,
+    name: &str,
+) -> Result<T, String> {
+    let path = project_file(state, project, name);
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {}", path.display(), e))?;
+    serde_json::from_str(&text).map_err(|e| format!("{}: {}", path.display(), e))
+}
+
+pub(crate) fn read_chunks_file(state: &AppState, project: &str) -> Result<Vec<Chunk>, String> {
+    read_project_json(state, project, "rag_chunks.json")
 }
 
 // ── Commands: project management ──────────────────────────────────────────────

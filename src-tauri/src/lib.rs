@@ -6,7 +6,9 @@
 //! read-only viewer. Both work on the same files in the app's iCloud Drive
 //! container — see `storage.rs`.
 
+mod ai;
 mod commands;
+mod search;
 mod storage;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -32,6 +34,9 @@ pub fn run() {
             commands::get_chunks,
             commands::get_qa_pairs,
             commands::search_chunks,
+            search::ask_search,
+            ai::ai_status,
+            ai::ai_generate,
             commands::save_chunk,
             commands::delete_chunk,
             commands::pick_pdf,
@@ -63,6 +68,9 @@ pub fn run() {
             commands::get_chunks,
             commands::get_qa_pairs,
             commands::search_chunks,
+            search::ask_search,
+            ai::ai_status,
+            ai::ai_generate,
             commands::get_pdf_location,
             commands::read_project_pdf,
             commands::open_external,
