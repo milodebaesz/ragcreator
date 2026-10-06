@@ -1,5 +1,9 @@
 # RAGCreator voor iOS
 
+> **Vervangen.** De iPhone-app is nu native (SwiftUI), zie `ios/README.md`.
+> Dit document beschrijft de oude Tauri-iOS-versie; de opslag in iCloud en de
+> verhuizing vanuit de repo gelden nog steeds.
+
 Een read-only versie van RAGCreator voor iPhone en iPad: aanbevelingen inzien,
 de richtlijntekst lezen, en zoeken — in de aanbevelingen én in de volledige
 richtlijn. De pijplijn (PDF → chunks → MongoDB) blijft op de Mac.

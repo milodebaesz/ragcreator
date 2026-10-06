@@ -12,7 +12,8 @@ settings:
     CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: "5.0"
     MARKETING_VERSION: "0.2.0"
-    CURRENT_PROJECT_VERSION: "1"
+    # Above the Tauri app's last build (2), which this app replaces.
+    CURRENT_PROJECT_VERSION: "3"
 targets:
   RAGCreator:
     type: application
@@ -21,9 +22,8 @@ targets:
       - path: RAGCreator
     settings:
       base:
-        # Its own bundle id while it is built next to the Tauri app; both
-        # read the same iCloud container (see the entitlements below).
-        PRODUCT_BUNDLE_IDENTIFIER: com.ragcreator.native
+        # The id the Tauri iOS app had: installing this replaces it.
+        PRODUCT_BUNDLE_IDENTIFIER: com.ragcreator.app
         PRODUCT_NAME: RAGCreator
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -31,7 +31,7 @@ targets:
     info:
       path: RAGCreator/Info.plist
       properties:
-        CFBundleDisplayName: RAGCreator β
+        CFBundleDisplayName: RAGCreator
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSRequiresIPhoneOS: true

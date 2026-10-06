@@ -11,8 +11,10 @@ ios/
   RAGCreator/Views/        schermen
 ```
 
-Bundle-ID `com.ragcreator.native`, naam "RAGCreator β", zodat hij naast de
-Tauri-app op dezelfde telefoon staat tot hij die vervangt.
+Bundle-ID `com.ragcreator.app`, naam "RAGCreator": dezelfde als de oude
+Tauri-iOS-app, die hij daarmee vervangt. De Tauri-iOS-scripts heten nu
+`tauri-ios:*`; draai die niet meer op een toestel, want ze zetten de oude app
+over deze heen.
 
 ## Bouwen
 
