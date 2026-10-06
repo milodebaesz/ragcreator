@@ -111,6 +111,18 @@ final class Library {
         return pairs
     }
 
+    /// Recommendations and Q&A pairs of the given guidelines, for the search
+    /// behind the Vraag screen. A guideline that fails to load is skipped.
+    func corpora(for projects: [String]) async -> [AskSearch.Corpus] {
+        var result: [AskSearch.Corpus] = []
+        for project in projects {
+            let chunks = (try? await chunks(for: project)) ?? []
+            let qa = await qaPairs(for: project)
+            result.append(AskSearch.Corpus(project: project, chunks: chunks, qa: qa))
+        }
+        return result
+    }
+
     /// The guideline PDF on disk, downloading it from iCloud if needed.
     func pdfURL(for project: String) async throws -> URL {
         guard let root else { throw CocoaError(.fileReadNoSuchFile) }

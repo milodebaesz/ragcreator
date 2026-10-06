@@ -13,26 +13,36 @@
 		3CE063C2909DA33C4221C716 /* Library.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DE2682CC6D1A92C4945082F /* Library.swift */; };
 		4EB688497307EDF2CDF1EE4D /* RecommendationDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE743EB1BDAFAA283DA8BF25 /* RecommendationDetailView.swift */; };
 		606C842AD795F8DDE1722773 /* PDFScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD565EE4F0F3357B921779DD /* PDFScreen.swift */; };
+		612678DF833143F20B5A0E52 /* AskView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5EB4771571B5C281B3F4404 /* AskView.swift */; };
+		6765F84DC315A58FEEC95665 /* AskSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA6E901240D62D91684C81D7 /* AskSearch.swift */; };
 		86C08915ED81A90FE9542626 /* RAGCreatorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E4EACB78BED6FF3185EA74C /* RAGCreatorApp.swift */; };
+		94288E8CA5F95E47E1EB8D93 /* QAView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8BFDEEC0377B6E2A9849325 /* QAView.swift */; };
 		9A5970F7D883463FFDA4BF2D /* RecommendationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91F84C3259ADB122E7910A3A /* RecommendationsView.swift */; };
 		B75217F2434657CC89AE84AA /* References.swift in Sources */ = {isa = PBXBuildFile; fileRef = F65F7F2AF8D291F217103919 /* References.swift */; };
+		DE1E7F339BEB563EAD72B8BB /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A34925F50E9438F529DA64A /* OverviewView.swift */; };
 		DED7FA5F268477D91012C554 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3D98C478985893AFFA4F5232 /* Assets.xcassets */; };
+		EAC58CCB00A5E11012AF826F /* AppleAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 681ECB70FCB5D0B8694C9F2E /* AppleAI.swift */; };
 		F831AD5122B759EB42065416 /* Storage.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD15CF91C2440B693B313408 /* Storage.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		0F8F4BACC68B0475EAA98D59 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		3A34925F50E9438F529DA64A /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
 		3C71BD811348AC889F9BB9EA /* RAGCreator.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RAGCreator.entitlements; sourceTree = "<group>"; };
 		3D613C48916E720619D1EB94 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		3D98C478985893AFFA4F5232 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		5E4EACB78BED6FF3185EA74C /* RAGCreatorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RAGCreatorApp.swift; sourceTree = "<group>"; };
+		681ECB70FCB5D0B8694C9F2E /* AppleAI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAI.swift; sourceTree = "<group>"; };
 		6DE2682CC6D1A92C4945082F /* Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Library.swift; sourceTree = "<group>"; };
 		91F84C3259ADB122E7910A3A /* RecommendationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecommendationsView.swift; sourceTree = "<group>"; };
 		B0B19C277DD0FF6D20163C79 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		C8BFDEEC0377B6E2A9849325 /* QAView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QAView.swift; sourceTree = "<group>"; };
 		DE743EB1BDAFAA283DA8BF25 /* RecommendationDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecommendationDetailView.swift; sourceTree = "<group>"; };
+		E5EB4771571B5C281B3F4404 /* AskView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskView.swift; sourceTree = "<group>"; };
 		E8593F10C6424DFC9ABAD6F9 /* RAGCreator.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = RAGCreator.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EBBDF848BCD079327EF5DE44 /* Badges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Badges.swift; sourceTree = "<group>"; };
 		F65F7F2AF8D291F217103919 /* References.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = References.swift; sourceTree = "<group>"; };
+		FA6E901240D62D91684C81D7 /* AskSearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskSearch.swift; sourceTree = "<group>"; };
 		FD15CF91C2440B693B313408 /* Storage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Storage.swift; sourceTree = "<group>"; };
 		FD565EE4F0F3357B921779DD /* PDFScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFScreen.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -41,8 +51,11 @@
 		2442406ED3C8DAD70C9A1EB2 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				E5EB4771571B5C281B3F4404 /* AskView.swift */,
 				EBBDF848BCD079327EF5DE44 /* Badges.swift */,
+				3A34925F50E9438F529DA64A /* OverviewView.swift */,
 				FD565EE4F0F3357B921779DD /* PDFScreen.swift */,
+				C8BFDEEC0377B6E2A9849325 /* QAView.swift */,
 				DE743EB1BDAFAA283DA8BF25 /* RecommendationDetailView.swift */,
 				91F84C3259ADB122E7910A3A /* RecommendationsView.swift */,
 				B0B19C277DD0FF6D20163C79 /* RootView.swift */,
@@ -98,6 +111,8 @@
 		FCC2F72BC439770C1960F270 /* Data */ = {
 			isa = PBXGroup;
 			children = (
+				681ECB70FCB5D0B8694C9F2E /* AppleAI.swift */,
+				FA6E901240D62D91684C81D7 /* AskSearch.swift */,
 				6DE2682CC6D1A92C4945082F /* Library.swift */,
 				0F8F4BACC68B0475EAA98D59 /* Models.swift */,
 				F65F7F2AF8D291F217103919 /* References.swift */,
@@ -177,10 +192,15 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EAC58CCB00A5E11012AF826F /* AppleAI.swift in Sources */,
+				6765F84DC315A58FEEC95665 /* AskSearch.swift in Sources */,
+				612678DF833143F20B5A0E52 /* AskView.swift in Sources */,
 				31B0B77049AEF69FCAF7D3DB /* Badges.swift in Sources */,
 				3CE063C2909DA33C4221C716 /* Library.swift in Sources */,
 				341A08542A9368834CD70B38 /* Models.swift in Sources */,
+				DE1E7F339BEB563EAD72B8BB /* OverviewView.swift in Sources */,
 				606C842AD795F8DDE1722773 /* PDFScreen.swift in Sources */,
+				94288E8CA5F95E47E1EB8D93 /* QAView.swift in Sources */,
 				86C08915ED81A90FE9542626 /* RAGCreatorApp.swift in Sources */,
 				4EB688497307EDF2CDF1EE4D /* RecommendationDetailView.swift in Sources */,
 				9A5970F7D883463FFDA4BF2D /* RecommendationsView.swift in Sources */,

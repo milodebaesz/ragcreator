@@ -18,8 +18,7 @@ struct RootView: View {
         case .ready:
             TabView(selection: $tab) {
                 SwiftUI.Tab("Vraag", systemImage: "sparkles", value: Tab.ask) {
-                    ComingSoonView(title: "Vraag", systemImage: "sparkles",
-                                   text: "Vragen stellen met Apple Intelligence komt in de volgende stap. Gebruik tot die tijd de huidige RAGCreator-app.")
+                    AskView()
                 }
                 SwiftUI.Tab("Aanbevelingen", systemImage: "checklist", value: Tab.recommendations) {
                     RecommendationsView()
@@ -28,12 +27,10 @@ struct RootView: View {
                     GuidelinePDFTab()
                 }
                 SwiftUI.Tab("Q&A", systemImage: "bubble.left.and.bubble.right", value: Tab.qa) {
-                    ComingSoonView(title: "Q&A", systemImage: "bubble.left.and.bubble.right",
-                                   text: "De Q&A-paren komen in een volgende stap.")
+                    QAView()
                 }
                 SwiftUI.Tab("Overzicht", systemImage: "chart.bar", value: Tab.overview) {
-                    ComingSoonView(title: "Overzicht", systemImage: "chart.bar",
-                                   text: "Het overzicht met grafieken komt in een volgende stap.")
+                    OverviewView()
                 }
             }
         }
@@ -88,19 +85,6 @@ struct ProjectMenuItems: View {
 extension View {
     func projectTitleMenu() -> some View {
         toolbarTitleMenu { ProjectMenuItems() }
-    }
-}
-
-struct ComingSoonView: View {
-    let title: String
-    let systemImage: String
-    let text: String
-
-    var body: some View {
-        NavigationStack {
-            ContentUnavailableView(title, systemImage: systemImage, description: Text(text))
-                .navigationTitle(title)
-        }
     }
 }
 

@@ -34,5 +34,12 @@ de container `iCloud.com.ragcreator.app`.
 | Aanbevelingen (zoeken, filters, detail, referenties, Q&A) | klaar |
 | PDF (PDFKit, opent op de pagina van de aanbeveling) | klaar |
 | Richtlijn-tab (PDF van de gekozen richtlijn) | klaar |
-| Vraag (Apple Intelligence) | volgt |
-| Q&A, Overzicht | volgt |
+| Vraag (Apple Intelligence, antwoord verschijnt woord voor woord) | klaar |
+| Q&A (zoeken, taalfilter, naar de aanbeveling) | klaar |
+| Overzicht (tellingen, grafieken, tabellen) | klaar |
+
+Het icoon wordt getekend door `scripts/make_icon.swift`:
+
+```sh
+swift ios/scripts/make_icon.swift ios/RAGCreator/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon.png
+```
