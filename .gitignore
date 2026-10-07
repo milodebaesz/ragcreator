@@ -36,6 +36,8 @@ medical_rag_project/projects/
 # opnieuw te genereren met scripts/0_normalize_and_id.py. Het CONTROLEBESTAND
 # guidelines_registry.json wordt wel gecommit: dat is handmatig onderhouden.
 medical_rag_project/normalized/
+# Projectconfig staat sinds de verhuizing in de iCloud-map, niet in de repo.
+medical_rag_project/rag_config.json
 # Wat de desktop-app achterlaat nadat hij de data naar iCloud heeft verhuisd.
 medical_rag_project/.pre-icloud-backup/
 
