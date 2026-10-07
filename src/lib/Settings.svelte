@@ -1,7 +1,7 @@
 <script>
   import { invoke } from '@tauri-apps/api/core'
   import { envConfig } from './stores.js'
-  import IcloudSync from './IcloudSync.svelte'
+  import StorageStatus from './StorageStatus.svelte'
 
   let saving  = false
   let saved   = false
@@ -111,13 +111,13 @@
     </div>
   </form>
 
-  <IcloudSync />
+  <StorageStatus />
 
   <!-- Info box -->
   <div class="info-box">
     <div class="info-title">Waar wordt dit opgeslagen?</div>
     <p class="info-text">
-      Instellingen worden opgeslagen in <code>medical_rag_project/.env</code> in de project-map.
+      Instellingen worden opgeslagen in <code>medical_rag_project/.env</code> in de repo, niet in iCloud.
       Dit bestand wordt automatisch geladen bij elke stap die API-toegang vereist.
     </p>
   </div>

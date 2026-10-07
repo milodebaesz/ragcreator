@@ -8,13 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "ios:prebuild": "PATH=\"$PWD/src-tauri/ios/swift-shim:$PATH\" cargo build --manifest-path src-tauri/Cargo.toml --package ragcreator --target aarch64-apple-ios --features tauri/custom-protocol --lib --release",
-    "ios:build": "rm -rf src-tauri/gen/apple/build && npm run ios:prebuild && tauri ios build --target aarch64 --export-method debugging",
-    "ios:install": "xcrun devicectl device install app --device \"$IOS_DEVICE\" src-tauri/gen/apple/build/arm64/RAGCreator.ipa",
-    "ios:prebuild:sim": "PATH=\"$PWD/src-tauri/ios/swift-shim:$PATH\" cargo build --manifest-path src-tauri/Cargo.toml --package ragcreator --target aarch64-apple-ios-sim --features tauri/custom-protocol --lib --release",
-    "ios:sim": "rm -rf src-tauri/gen/apple/build && npm run ios:prebuild:sim && tauri ios build --target aarch64-sim && xcrun simctl install booted src-tauri/gen/apple/build/arm64-sim/RAGCreator.app && xcrun simctl launch booted com.ragcreator.app",
-    "ios:sim:seed": "C=$(xcrun simctl get_app_container booted com.ragcreator.app data) && mkdir -p \"$C/Documents/medical_rag_project/projects\" && cp medical_rag_project/rag_config.json \"$C/Documents/medical_rag_project/\" && cp -R medical_rag_project/projects/* \"$C/Documents/medical_rag_project/projects/\" && echo \"data gekopieerd naar $C/Documents\"",
-    "ios:seed": "sh scripts/seed-device.sh"
+    "native:build": "cd ios && xcodegen generate && xcodebuild -project RAGCreator.xcodeproj -scheme RAGCreator -configuration Release -destination generic/platform=iOS -derivedDataPath build -allowProvisioningUpdates build",
+    "native:install": "xcrun devicectl device install app --device \"$IOS_DEVICE\" ios/build/Build/Products/Release-iphoneos/RAGCreator.app"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0"

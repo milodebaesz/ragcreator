@@ -18,8 +18,10 @@ import re
 import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).parent.parent
-DATA_DIR = Path(os.getenv("RAG_DATA_DIR", str(PROJECT_ROOT / "data")))
+sys.path.insert(0, str(Path(__file__).parent))
+from pipeline_common import DATA_ROOT  # noqa: E402
+
+DATA_DIR = Path(os.getenv("RAG_DATA_DIR", str(DATA_ROOT / "data")))
 INPUT_MD = DATA_DIR / "guideline.md"
 OUTPUT_JSON = DATA_DIR / "rag_chunks.json"
 PROJECT_TITLE = os.getenv("RAG_PROJECT_TITLE", DATA_DIR.name)

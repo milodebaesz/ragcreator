@@ -17,11 +17,11 @@ use crate::storage::{self, MED_DIR};
 pub struct AppState;
 
 impl AppState {
-    /// Root directory containing `medical_rag_project/`.
+    /// Root directory containing the data under `medical_rag_project/`.
     ///
-    /// The repo checkout on desktop, the iCloud container on iOS — see
-    /// `storage.rs`. Everything below this line is written against the layout,
-    /// not the platform.
+    /// The app's iCloud container on both platforms, with a local fallback —
+    /// see `storage.rs`. Everything below this line is written against the
+    /// layout, not the platform.
     pub fn root(&self) -> PathBuf {
         storage::data_root()
     }
@@ -151,18 +151,43 @@ fn config_path(state: &AppState) -> PathBuf {
     med_root(state).join("rag_config.json")
 }
 
-fn project_data_dir(state: &AppState, project: &str) -> PathBuf {
+pub(crate) fn project_data_dir(state: &AppState, project: &str) -> PathBuf {
     med_root(state).join("projects").join(project)
 }
 
+/// A file in a project folder, downloaded first if iCloud is holding it back.
+///
+/// Every read and write of project data goes through here: an undownloaded
+/// file looks missing, and a save would then overwrite it with a fresh one.
+fn project_file(state: &AppState, project: &str, name: &str) -> PathBuf {
+    let path = project_data_dir(state, project).join(name);
+    storage::ensure_local(&path);
+    path
+}
+
+fn pending_error(path: &Path) -> String {
+    format!(
+        "iCloud heeft {} nog niet gedownload. Probeer het zo opnieuw.",
+        path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()
+    )
+}
+
+/// `medical_rag_project/` in the repo checkout: scripts, venv and `.env`.
+///
+/// Deliberately not the data root — code and API keys stay out of iCloud.
 #[cfg(desktop)]
-fn scripts_dir(state: &AppState) -> PathBuf {
-    med_root(state).join("scripts")
+fn code_med_root() -> PathBuf {
+    storage::code_root().join(MED_DIR)
 }
 
 #[cfg(desktop)]
-fn python_exec(state: &AppState) -> PathBuf {
-    let venv_py = med_root(state)
+fn scripts_dir() -> PathBuf {
+    code_med_root().join("scripts")
+}
+
+#[cfg(desktop)]
+fn python_exec() -> PathBuf {
+    let venv_py = code_med_root()
         .join("venv")
         .join("bin")
         .join("python3");
@@ -177,7 +202,12 @@ fn python_exec(state: &AppState) -> PathBuf {
 
 pub fn read_config(state: &AppState) -> Result<Config, String> {
     let path = config_path(state);
-    if !path.exists() {
+    // A config that has not downloaded yet must not read as "no projects":
+    // the next write_config would then replace it with an empty one.
+    if !storage::ensure_local(&path) {
+        if storage::is_pending(&path) {
+            return Err(pending_error(&path));
+        }
         return Ok(Config {
             active: String::new(),
             projects: vec![],
@@ -296,7 +326,7 @@ pub fn get_project_status(
         .map(|p| Path::new(p).exists())
         .unwrap_or(false);
 
-    let chunks_path = data_dir.join("rag_chunks.json");
+    let chunks_path = project_file(&state, &project, "rag_chunks.json");
     let chunk_count = if chunks_path.exists() {
         std::fs::read_to_string(&chunks_path)
             .ok()
@@ -309,9 +339,9 @@ pub fn get_project_status(
 
     Ok(ProjectStatus {
         has_pdf,
-        has_markdown: data_dir.join("guideline.md").exists(),
+        has_markdown: project_file(&state, &project, "guideline.md").exists(),
         has_chunks: chunks_path.exists(),
-        has_qa: data_dir.join("qa_pairs.json").exists(),
+        has_qa: project_file(&state, &project, "qa_pairs.json").exists(),
         has_embeddings: data_dir.join("embeddings.json").exists(),
         chunk_count,
     })
@@ -343,10 +373,23 @@ pub async fn run_pipeline_step(
     let config = read_config(&state)?;
     let meta = config.project_meta.get(&project).cloned().unwrap_or_default();
     let data_dir = project_data_dir(&state, &project);
-    let script_path = scripts_dir(&state).join(script_name);
-    let python = python_exec(&state);
+    let script_path = scripts_dir().join(script_name);
+    let python = python_exec();
 
     std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
+
+    // Python reads these straight from disk, so anything iCloud has not
+    // downloaded yet has to be there before the script starts.
+    let normalized_dir = med_root(&state).join("normalized");
+    let pending = storage::ensure_tree(&data_dir, std::time::Duration::from_secs(60))
+        + storage::ensure_tree(&normalized_dir, std::time::Duration::from_secs(60));
+    if pending > 0 {
+        return Err(format!(
+            "iCloud heeft nog {} bestand(en) van dit project niet gedownload. \
+             Probeer het over een minuut opnieuw.",
+            pending
+        ));
+    }
 
     if !script_path.exists() {
         return Err(format!("Script niet gevonden: {}", script_path.display()));
@@ -355,6 +398,9 @@ pub async fn run_pipeline_step(
     // Build environment
     let mut env_vars: HashMap<String, String> = HashMap::new();
     env_vars.insert("RAG_DATA_DIR".into(), data_dir.to_string_lossy().into());
+    // Where normalized/ and the other projects live; the scripts would
+    // otherwise look next to themselves, in the repo.
+    env_vars.insert("RAG_MED_ROOT".into(), med_root(&state).to_string_lossy().into());
     env_vars.insert("RAG_PROJECT_TITLE".into(), project.clone());
 
     if let Some(year) = &meta.year {
@@ -465,6 +511,12 @@ pub async fn run_pipeline_step(
         match child.wait().await {
             Ok(status) => {
                 let exit_code = status.code().unwrap_or(-1);
+                // New recommendations need their pages before the phone can
+                // link to them.
+                if step == 2 && status.success() {
+                    let p = project.clone();
+                    std::thread::spawn(move || build_page_indexes(vec![p]));
+                }
                 app.emit(
                     "pipeline-done",
                     DoneEvent {
@@ -598,7 +650,7 @@ fn resolve_references(state: &AppState, project: &str, ref_ids: &[i64]) -> Vec<R
     if ref_ids.is_empty() {
         return vec![];
     }
-    let md_path = project_data_dir(state, project).join("guideline.md");
+    let md_path = project_file(state, project, "guideline.md");
     let Ok(markdown) = std::fs::read_to_string(&md_path) else {
         return vec![];
     };
@@ -629,7 +681,7 @@ pub fn get_chunks(
     page_size: usize,
     approved_filter: Option<bool>,
 ) -> Result<ChunksPage, String> {
-    let path = project_data_dir(&state, &project).join("rag_chunks.json");
+    let path = project_file(&state, &project, "rag_chunks.json");
     if !path.exists() {
         return Ok(ChunksPage { items: vec![], total: 0 });
     }
@@ -691,7 +743,7 @@ pub fn get_qa_pairs(
     page_size: usize,
     query: Option<String>,
 ) -> Result<QaPage, String> {
-    let path = project_data_dir(&state, &project).join("qa_pairs.json");
+    let path = project_file(&state, &project, "qa_pairs.json");
     if !path.exists() {
         return Ok(QaPage { items: vec![], total: 0, matched: 0 });
     }
@@ -747,7 +799,7 @@ pub fn search_chunks(
     disease_filter: Option<String>,
     topic_filter: Option<String>,
 ) -> Result<Vec<Chunk>, String> {
-    let path = project_data_dir(&state, &project).join("rag_chunks.json");
+    let path = project_file(&state, &project, "rag_chunks.json");
     if !path.exists() {
         return Ok(vec![]);
     }
@@ -797,7 +849,10 @@ pub fn save_chunk(
     // number gets its text looked up the same way extraction does.
     chunk.metadata.references = resolve_references(&state, &project, &chunk.metadata.ref_ids);
 
-    let path = project_data_dir(&state, &project).join("rag_chunks.json");
+    let path = project_file(&state, &project, "rag_chunks.json");
+    if storage::is_pending(&path) {
+        return Err(pending_error(&path));
+    }
     let mut all: Vec<Chunk> = if path.exists() {
         let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
         serde_json::from_str(&text).map_err(|e| e.to_string())?
@@ -822,7 +877,10 @@ pub fn delete_chunk(
     project: String,
     id: String,
 ) -> Result<(), String> {
-    let path = project_data_dir(&state, &project).join("rag_chunks.json");
+    let path = project_file(&state, &project, "rag_chunks.json");
+    if storage::is_pending(&path) {
+        return Err(pending_error(&path));
+    }
     if !path.exists() {
         return Ok(());
     }
@@ -1088,9 +1146,8 @@ pub fn get_guideline_info(
 ) -> Result<GuidelineInfo, String> {
     let config = read_config(&state)?;
     let meta = config.project_meta.get(&project).cloned().unwrap_or_default();
-    let data_dir = project_data_dir(&state, &project);
 
-    let chunks_path = data_dir.join("rag_chunks.json");
+    let chunks_path = project_file(&state, &project, "rag_chunks.json");
     let has_chunks = chunks_path.exists();
     let chunks: Vec<Chunk> = if has_chunks {
         let text = std::fs::read_to_string(&chunks_path).map_err(|e| e.to_string())?;
@@ -1099,7 +1156,7 @@ pub fn get_guideline_info(
         vec![]
     };
 
-    let guideline_reference_count = std::fs::read_to_string(data_dir.join("guideline.md"))
+    let guideline_reference_count = std::fs::read_to_string(project_file(&state, &project, "guideline.md"))
         .map(|md| parse_reference_section(&md).len())
         .unwrap_or(0);
 
@@ -1170,6 +1227,8 @@ pub fn project_pdf_path(state: &AppState, project: &str) -> Option<PathBuf> {
         let mut pdfs: Vec<PathBuf> = entries
             .flatten()
             .map(|e| e.path())
+            // A PDF iCloud has not downloaded shows up as ".name.pdf.icloud".
+            .map(|p| storage::real_path_of(&p).unwrap_or(p))
             .filter(|p| {
                 p.extension()
                     .and_then(|e| e.to_str())
@@ -1179,6 +1238,7 @@ pub fn project_pdf_path(state: &AppState, project: &str) -> Option<PathBuf> {
             .collect();
         pdfs.sort();
         if let Some(p) = pdfs.into_iter().next() {
+            storage::ensure_local(&p);
             return Some(p);
         }
     }
@@ -1201,7 +1261,7 @@ pub fn open_project_pdf(state: State<AppState>, project: String) -> Result<(), S
 
 /// chunk_id → 0-based page, so a recommendation is only searched for once.
 fn page_cache_path(state: &AppState, project: &str) -> PathBuf {
-    project_data_dir(state, project).join("pdf_pages.json")
+    project_file(state, project, "pdf_pages.json")
 }
 
 fn read_page_cache(state: &AppState, project: &str) -> HashMap<String, i64> {
@@ -1238,11 +1298,11 @@ pub async fn locate_in_pdf(
     let pdf = project_pdf_path(&state, &project).ok_or(
         "Geen PDF gevonden voor dit project. Koppel een PDF en voer stap 1 uit.",
     )?;
-    let script = scripts_dir(&state).join("pdf_locate.py");
+    let script = scripts_dir().join("pdf_locate.py");
     if !script.exists() {
         return Err(format!("Script niet gevonden: {}", script.display()));
     }
-    let python = python_exec(&state);
+    let python = python_exec();
 
     // An explicit page wins (the viewer's prev/next), then the cached hit.
     let cached = chunk_id
@@ -1305,6 +1365,65 @@ pub async fn locate_in_pdf(
     }
 
     Ok(value)
+}
+
+// ── Page index for the phone ─────────────────────────────────────────────────
+//
+// The iOS app cannot run PyMuPDF, so it can only jump to a page that is already
+// in pdf_pages.json. The desktop keeps that file complete in the background.
+
+/// Whether a project's page index is older than its recommendations.
+#[cfg(desktop)]
+fn page_index_stale(dir: &Path) -> bool {
+    let modified = |name: &str| std::fs::metadata(dir.join(name)).and_then(|m| m.modified()).ok();
+    match (modified("rag_chunks.json"), modified("pdf_pages.json")) {
+        (None, _) => false,
+        (Some(_), None) => true,
+        (Some(chunks), Some(pages)) => pages < chunks,
+    }
+}
+
+/// Look up the PDF page of every recommendation in `projects` that lacks one.
+///
+/// Blocking and sequential; callers run it on a thread of its own. Failures
+/// only cost the phone its page links, so they are logged and skipped.
+#[cfg(desktop)]
+fn build_page_indexes(projects: Vec<String>) {
+    let state = AppState;
+    let script = scripts_dir().join("build_pdf_pages.py");
+    for project in projects {
+        let dir = project_data_dir(&state, &project);
+        if !page_index_stale(&dir) {
+            continue;
+        }
+        let result = std::process::Command::new(python_exec())
+            .arg(&script)
+            .arg(&dir)
+            .output();
+        match result {
+            Ok(out) if out.status.success() => {
+                eprintln!("[pdf_pages] {}", String::from_utf8_lossy(&out.stdout).trim());
+            }
+            Ok(out) => eprintln!(
+                "[pdf_pages] {}: {}",
+                project,
+                String::from_utf8_lossy(&out.stderr).trim()
+            ),
+            Err(e) => eprintln!("[pdf_pages] {}: {}", project, e),
+        }
+    }
+}
+
+/// Bring every project's page index up to date, once per launch.
+#[cfg(desktop)]
+fn refresh_page_indexes_once() {
+    static STARTED: std::sync::Once = std::sync::Once::new();
+    STARTED.call_once(|| {
+        let Ok(config) = read_config(&AppState) else {
+            return;
+        };
+        std::thread::spawn(move || build_page_indexes(config.projects));
+    });
 }
 
 // ── Commands: export ─────────────────────────────────────────────────────────
@@ -1412,7 +1531,7 @@ pub async fn export_chunks(
 ) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
 
-    let path = project_data_dir(&state, &project).join("rag_chunks.json");
+    let path = project_file(&state, &project, "rag_chunks.json");
     if !path.exists() {
         return Err("Geen chunks om te exporteren.".into());
     }
@@ -1489,14 +1608,14 @@ fn clean_env_value(raw: &str) -> String {
 }
 
 #[cfg(desktop)]
-fn env_path(state: &AppState) -> PathBuf {
-    med_root(state).join(".env")
+fn env_path() -> PathBuf {
+    code_med_root().join(".env")
 }
 
 #[cfg(desktop)]
 #[tauri::command]
-pub fn get_env_config(state: State<AppState>) -> Result<EnvConfig, String> {
-    let path = env_path(&state);
+pub fn get_env_config() -> Result<EnvConfig, String> {
+    let path = env_path();
     if !path.exists() {
         return Ok(EnvConfig {
             mongodb_db: "rag_db".into(),
@@ -1553,10 +1672,9 @@ fn validate_openai_key(key: &str) -> Result<(), String> {
 #[cfg(desktop)]
 #[tauri::command]
 pub fn save_env_config(
-    state: State<AppState>,
     config: EnvConfig,
 ) -> Result<(), String> {
-    let path = env_path(&state);
+    let path = env_path();
     let openai_key = clean_env_value(&config.openai_key);
     validate_openai_key(&openai_key)?;
     let content = format!(
@@ -1573,16 +1691,13 @@ pub fn save_env_config(
 
 #[derive(Serialize)]
 pub struct StorageInfo {
-    /// "ios", "macos", "windows", "linux".
-    pub platform: String,
-    /// True on the read-only mobile build, which has no pipeline and no editing.
-    pub read_only: bool,
     pub root: String,
-    /// iOS only: whether the data came from iCloud Drive or the local fallback.
+    /// Whether the data lives in iCloud Drive or in the local fallback.
     pub using_icloud: bool,
-    /// Projects actually present on disk, so the mobile app can tell "iCloud has
-    /// not synced yet" apart from "nothing was ever exported".
-    pub available_projects: Vec<String>,
+    /// Why the data is not in iCloud, or what moving it there did.
+    pub note: Option<String>,
+    /// Files iCloud had not downloaded yet when the app started.
+    pub pending_downloads: usize,
 }
 
 /// Resolve the data root and report what the frontend is working with.
@@ -1595,287 +1710,22 @@ pub struct StorageInfo {
 pub async fn init_storage() -> Result<StorageInfo, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let root = storage::resolve_blocking();
-        let mut available_projects: Vec<String> =
-            std::fs::read_dir(root.join(MED_DIR).join("projects"))
-                .map(|entries| {
-                    entries
-                        .flatten()
-                        .filter(|e| e.path().is_dir())
-                        .map(|e| e.file_name().to_string_lossy().into_owned())
-                        .collect()
-                })
-                .unwrap_or_default();
-        available_projects.sort();
+        #[cfg(desktop)]
+        refresh_page_indexes_once();
+        // Older macOS versions keep undownloaded iCloud files as placeholders;
+        // fetching them here means the views find them on disk.
+        let pending_downloads =
+            storage::ensure_tree(&root.join(MED_DIR), std::time::Duration::from_secs(15));
 
         StorageInfo {
-            platform: std::env::consts::OS.to_string(),
-            read_only: cfg!(mobile),
             root: root.to_string_lossy().into_owned(),
             using_icloud: storage::using_icloud(),
-            available_projects,
+            note: storage::note(),
+            pending_downloads,
         }
     })
     .await
     .map_err(|e| format!("Kon de opslag niet initialiseren: {}", e))
-}
-
-// ── Commands: guideline text ─────────────────────────────────────────────────
-//
-// Reading the guideline on a phone. guideline.md runs to hundreds of kilobytes,
-// far too much to hand a mobile webview in one piece, so it is served as an
-// outline plus one section at a time.
-
-/// Strip the bold/italic wrapping the PDF conversion leaves on every heading.
-fn clean_heading(raw: &str) -> String {
-    let mut t = raw.trim();
-    loop {
-        let stripped = t
-            .strip_prefix("**")
-            .and_then(|r| r.strip_suffix("**"))
-            .or_else(|| t.strip_prefix('_').and_then(|r| r.strip_suffix('_')))
-            .or_else(|| t.strip_prefix('*').and_then(|r| r.strip_suffix('*')));
-        match stripped {
-            Some(inner) => t = inner.trim(),
-            None => break,
-        }
-    }
-    t.to_string()
-}
-
-/// Nesting depth from a "4.1.3.2." style prefix.
-///
-/// The conversion flattens every heading to `##`, so the numbering the
-/// guideline itself uses is the only structure left to indent by.
-fn heading_depth(title: &str) -> usize {
-    let prefix: String = title
-        .chars()
-        .take_while(|c| c.is_ascii_digit() || *c == '.')
-        .collect();
-    let depth = prefix.split('.').filter(|p| !p.is_empty()).count();
-    depth.clamp(1, 4)
-}
-
-#[derive(Serialize)]
-pub struct GuidelineSection {
-    /// Position in the outline; also what `get_guideline_section` takes.
-    pub index: usize,
-    pub title: String,
-    pub depth: usize,
-    /// Characters of body text, so the UI can skip empty front-matter headings.
-    pub length: usize,
-}
-
-/// Byte ranges of each section's body, in document order.
-fn split_sections(markdown: &str) -> Vec<(String, usize, usize)> {
-    let mut heads: Vec<(String, usize)> = vec![];
-    let mut offset = 0usize;
-    for line in markdown.split_inclusive('\n') {
-        if let Some((_, title)) = is_heading(line) {
-            heads.push((clean_heading(title), offset));
-        }
-        offset += line.len();
-    }
-
-    let mut out = vec![];
-    for (i, (title, start)) in heads.iter().enumerate() {
-        let end = heads.get(i + 1).map(|(_, s)| *s).unwrap_or(markdown.len());
-        out.push((title.clone(), *start, end));
-    }
-    out
-}
-
-fn guideline_path(state: &AppState, project: &str) -> PathBuf {
-    project_data_dir(state, project).join("guideline.md")
-}
-
-#[tauri::command]
-pub fn get_guideline_outline(
-    state: State<AppState>,
-    project: String,
-) -> Result<Vec<GuidelineSection>, String> {
-    let path = guideline_path(&state, &project);
-    if !path.exists() {
-        return Ok(vec![]);
-    }
-    let md = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-
-    Ok(split_sections(&md)
-        .into_iter()
-        .enumerate()
-        .map(|(index, (title, start, end))| GuidelineSection {
-            index,
-            depth: heading_depth(&title),
-            length: end.saturating_sub(start),
-            title,
-        })
-        .collect())
-}
-
-#[derive(Serialize)]
-pub struct GuidelineSectionText {
-    pub index: usize,
-    pub title: String,
-    pub markdown: String,
-    pub has_prev: bool,
-    pub has_next: bool,
-}
-
-#[tauri::command]
-pub fn get_guideline_section(
-    state: State<AppState>,
-    project: String,
-    index: usize,
-) -> Result<GuidelineSectionText, String> {
-    let path = guideline_path(&state, &project);
-    let md = std::fs::read_to_string(&path)
-        .map_err(|_| "Geen guideline.md voor dit project.".to_string())?;
-
-    let sections = split_sections(&md);
-    let (title, start, end) = sections
-        .get(index)
-        .cloned()
-        .ok_or_else(|| format!("Sectie {} bestaat niet.", index))?;
-
-    // The heading line itself is part of the range; the UI renders the title
-    // separately, so drop it here rather than showing it twice.
-    let body = md[start..end]
-        .splitn(2, '\n')
-        .nth(1)
-        .unwrap_or("")
-        .trim()
-        .to_string();
-
-    Ok(GuidelineSectionText {
-        index,
-        title,
-        markdown: body,
-        has_prev: index > 0,
-        has_next: index + 1 < sections.len(),
-    })
-}
-
-/// Full-text search across the guideline's sections.
-///
-/// Complements `search_chunks`: that one only sees extracted recommendations,
-/// this one sees the prose around them.
-#[derive(Serialize)]
-pub struct GuidelineHit {
-    pub index: usize,
-    pub title: String,
-    /// Text around the first match, for a result-list preview.
-    pub snippet: String,
-}
-
-#[tauri::command]
-pub fn search_guideline(
-    state: State<AppState>,
-    project: String,
-    query: String,
-) -> Result<Vec<GuidelineHit>, String> {
-    let needle = query.trim().to_lowercase();
-    if needle.is_empty() {
-        return Ok(vec![]);
-    }
-    let path = guideline_path(&state, &project);
-    if !path.exists() {
-        return Ok(vec![]);
-    }
-    let md = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-
-    let mut hits = vec![];
-    for (index, (title, start, end)) in split_sections(&md).into_iter().enumerate() {
-        let body = &md[start..end];
-        let Some(at) = body.to_lowercase().find(&needle) else {
-            continue;
-        };
-
-        // Widen to char boundaries; slicing a UTF-8 string mid-character panics.
-        let from = body[..at].char_indices().rev().nth(60).map(|(i, _)| i).unwrap_or(0);
-        let to = body[at..]
-            .char_indices()
-            .nth(needle.chars().count() + 90)
-            .map(|(i, _)| at + i)
-            .unwrap_or(body.len());
-
-        hits.push(GuidelineHit {
-            index,
-            title,
-            snippet: body[from..to].split_whitespace().collect::<Vec<_>>().join(" "),
-        });
-        if hits.len() >= 60 {
-            break;
-        }
-    }
-    Ok(hits)
-}
-
-// ── Commands: PDF location (mobile) ──────────────────────────────────────────
-
-/// Where a project's PDF sits and which page a recommendation is on.
-///
-/// iOS cannot run PyMuPDF, so it never searches the PDF itself — it reads the
-/// `pdf_pages.json` cache the desktop app already built and synced, and hands
-/// the page number to the Files app.
-#[derive(Serialize)]
-pub struct PdfLocation {
-    pub file_name: String,
-    /// Absolute path, shown so the file stays findable if opening fails.
-    pub path: String,
-    /// Files-app URL for the PDF.
-    pub files_url: String,
-    /// 1-based page for the requested chunk, when the desktop app cached one.
-    pub page: Option<i64>,
-}
-
-#[tauri::command]
-pub fn get_pdf_location(
-    state: State<AppState>,
-    project: String,
-    chunk_id: Option<String>,
-) -> Result<Option<PdfLocation>, String> {
-    let Some(pdf) = project_pdf_path(&state, &project) else {
-        return Ok(None);
-    };
-    // The cache is 0-based (it indexes PyMuPDF pages); readers count from 1.
-    let page = chunk_id
-        .and_then(|id| read_page_cache(&state, &project).get(&id).copied())
-        .map(|p| p + 1);
-
-    Ok(Some(PdfLocation {
-        file_name: pdf
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default(),
-        files_url: format!("shareddocuments://{}", pdf.to_string_lossy()),
-        path: pdf.to_string_lossy().into_owned(),
-        page,
-    }))
-}
-
-// ── Commands: external links (mobile) ────────────────────────────────────────
-
-/// Mobile counterpart of the desktop `open_external`.
-///
-/// iOS has no child processes, so the opener plugin takes the place of `open`.
-/// The same scheme check applies: reference strings come out of a PDF and are
-/// untrusted input.
-#[cfg(mobile)]
-#[tauri::command]
-pub fn open_external(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    use tauri_plugin_opener::OpenerExt;
-
-    let trimmed = url.trim();
-    let lower = trimmed.to_lowercase();
-    let allowed = lower.starts_with("http://")
-        || lower.starts_with("https://")
-        || lower.starts_with("shareddocuments://");
-    if !allowed || trimmed.chars().any(|c| c.is_control()) {
-        return Err("Alleen http(s)-links kunnen geopend worden.".into());
-    }
-
-    app.opener()
-        .open_url(trimmed, None::<&str>)
-        .map_err(|e| format!("Kon niet openen: {}", e))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -1935,55 +1785,6 @@ mod tests {
 
     fn counts(entries: &[CountEntry]) -> Vec<(&str, usize)> {
         entries.iter().map(|e| (e.label.as_str(), e.count)).collect()
-    }
-
-    #[test]
-    fn heading_titles_lose_their_markdown_wrapping() {
-        assert_eq!(clean_heading("**4.1. Patients at risk**"), "4.1. Patients at risk");
-        assert_eq!(clean_heading("_4.1.3.2. Smoking_"), "4.1.3.2. Smoking");
-        assert_eq!(clean_heading("  Plain title  "), "Plain title");
-    }
-
-    #[test]
-    fn heading_depth_follows_the_guideline_numbering() {
-        // Every heading converts to "##", so the number prefix is the only
-        // structure left to indent the outline by.
-        assert_eq!(heading_depth("4. Prevention"), 1);
-        assert_eq!(heading_depth("4.1. Patients at risk"), 2);
-        assert_eq!(heading_depth("4.1.3.2. Smoking"), 4);
-        assert_eq!(heading_depth("Abbreviations"), 1);
-        // Deeper than the outline renders, clamped rather than dropped.
-        assert_eq!(heading_depth("1.2.3.4.5. Deep"), 4);
-    }
-
-    #[test]
-    fn sections_span_from_one_heading_to_the_next() {
-        let md = "intro line\n## **1. First**\nbody one\n## **2. Second**\nbody two\n";
-        let sections = split_sections(md);
-
-        assert_eq!(sections.len(), 2);
-        assert_eq!(sections[0].0, "1. First");
-        assert_eq!(&md[sections[0].1..sections[0].2], "## **1. First**\nbody one\n");
-        assert_eq!(sections[1].0, "2. Second");
-        // The last section runs to the end of the document.
-        assert_eq!(sections[1].2, md.len());
-    }
-
-    #[test]
-    fn guideline_snippets_never_split_a_utf8_character() {
-        // Accented text around the match would panic a byte-index slice.
-        let body = "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé                     cardiomyopathie ééééééééééééééééééééééééééééééééééééé";
-        let needle = "cardiomyopathie";
-        let at = body.to_lowercase().find(needle).unwrap();
-
-        let from = body[..at].char_indices().rev().nth(60).map(|(i, _)| i).unwrap_or(0);
-        let to = body[at..]
-            .char_indices()
-            .nth(needle.chars().count() + 90)
-            .map(|(i, _)| at + i)
-            .unwrap_or(body.len());
-
-        assert!(body[from..to].contains(needle));
     }
 
     #[test]

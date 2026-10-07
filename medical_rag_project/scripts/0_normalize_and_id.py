@@ -41,7 +41,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from pipeline_common import (  # noqa: E402
-    APPROVED, REJECTED, UNREVIEWED, OUTPUT_DIR, PROJECT_ROOT,
+    APPROVED, REJECTED, UNREVIEWED, DATA_ROOT, OUTPUT_DIR,
     PipelineError, chunks_path, load_registry, normalize_project,
 )
 
@@ -196,7 +196,7 @@ def main() -> None:
     OUTPUT_DIR.mkdir(exist_ok=True)
     for path, data in to_write.items():
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-        print(f"     geschreven: {path.relative_to(PROJECT_ROOT)}  ({len(data)} chunks)")
+        print(f"     geschreven: {path.relative_to(DATA_ROOT)}  ({len(data)} chunks)")
 
     manifest = {
         "generated_by": "scripts/0_normalize_and_id.py",
