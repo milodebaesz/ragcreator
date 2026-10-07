@@ -9,13 +9,6 @@ dist/
 src-tauri/target/
 src-tauri/gen/schemas/
 
-# The generated Xcode project is committed (it carries the entitlements and
-# Info.plist edits the iOS app needs), but its build output is not.
-src-tauri/gen/apple/build/
-src-tauri/gen/apple/Externals/
-src-tauri/gen/apple/*.xcodeproj/xcuserdata/
-src-tauri/gen/apple/*.xcodeproj/project.xcworkspace/xcuserdata/
-src-tauri/gen/apple/Pods/
 
 # Native iOS app build output
 ios/build/

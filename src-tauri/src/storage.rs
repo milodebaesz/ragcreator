@@ -52,7 +52,7 @@ pub const BACKUP_DIR: &str = ".pre-icloud-backup";
 /// Apple documents this call as potentially slow on first use (it may have to
 /// create the container), so it must not run on the main thread; every caller
 /// reaches it through `resolve_blocking`.
-#[cfg(any(target_os = "ios", target_os = "macos"))]
+#[cfg(target_os = "macos")]
 fn ubiquity_container() -> Option<PathBuf> {
     use objc2::rc::autoreleasepool;
     use objc2::runtime::AnyObject;
@@ -89,7 +89,7 @@ fn ubiquity_container() -> Option<PathBuf> {
     })
 }
 
-#[cfg(not(any(target_os = "ios", target_os = "macos")))]
+#[cfg(not(target_os = "macos"))]
 fn ubiquity_container() -> Option<PathBuf> {
     None
 }
@@ -141,18 +141,6 @@ pub fn code_root() -> PathBuf {
         .parent()
         .expect("Cannot resolve repo root from CARGO_MANIFEST_DIR")
         .to_path_buf()
-}
-
-/// Documents directory inside the app's own sandbox.
-///
-/// The iOS fallback when iCloud is unavailable. `UIFileSharingEnabled` and
-/// `LSSupportsOpeningDocumentsInPlace` expose it in the Files app, so a user
-/// without iCloud can still drop project folders in by hand.
-#[cfg(target_os = "ios")]
-fn local_documents() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(|home| PathBuf::from(home).join("Documents"))
-        .unwrap_or_else(|| PathBuf::from("/Documents"))
 }
 
 // ── Moving the desktop data into iCloud ──────────────────────────────────────
@@ -262,7 +250,7 @@ pub fn real_path_of(placeholder: &Path) -> Option<PathBuf> {
 }
 
 /// Ask iCloud to download `path`. Returns immediately; the file arrives later.
-#[cfg(any(target_os = "ios", target_os = "macos"))]
+#[cfg(target_os = "macos")]
 fn request_download(path: &Path) {
     use objc2::rc::autoreleasepool;
     use objc2::runtime::AnyObject;
@@ -293,7 +281,7 @@ fn request_download(path: &Path) {
     });
 }
 
-#[cfg(not(any(target_os = "ios", target_os = "macos")))]
+#[cfg(not(target_os = "macos"))]
 fn request_download(_path: &Path) {}
 
 /// Poll until every path exists or `timeout` passes; returns how many are missing.
@@ -379,17 +367,6 @@ static NOTE: OnceLock<Option<String>> = OnceLock::new();
 /// `data_root` is a cheap lookup.
 pub fn resolve_blocking() -> PathBuf {
     ROOT.get_or_init(|| {
-        #[cfg(target_os = "ios")]
-        {
-            let cloud = ubiquity_container();
-            ROOT_IS_ICLOUD.set(cloud.is_some()).ok();
-            let root = cloud.unwrap_or_else(local_documents);
-            // The container's Documents folder does not exist until something
-            // writes to it, and every read below joins onto it.
-            std::fs::create_dir_all(root.join(MED_DIR).join("projects")).ok();
-            root
-        }
-
         #[cfg(desktop)]
         {
             let repo = code_root();

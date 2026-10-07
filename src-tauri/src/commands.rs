@@ -228,42 +228,6 @@ fn write_config(state: &AppState, config: &Config) -> Result<(), String> {
     std::fs::write(path, text).map_err(|e| e.to_string())
 }
 
-/// Every project, in config order; the folders on disk when the config lists
-/// none (files copied onto a phone by hand).
-pub(crate) fn project_names(state: &AppState) -> Result<Vec<String>, String> {
-    let config = read_config(state)?;
-    if !config.projects.is_empty() {
-        return Ok(config.projects);
-    }
-    let mut names: Vec<String> = std::fs::read_dir(med_root(state).join("projects"))
-        .map(|entries| {
-            entries
-                .flatten()
-                .filter(|e| e.path().is_dir())
-                .map(|e| e.file_name().to_string_lossy().into_owned())
-                .collect()
-        })
-        .unwrap_or_default();
-    names.sort();
-    Ok(names)
-}
-
-/// A project's JSON file, parsed. Missing is an error; callers that can live
-/// without the file use `unwrap_or_default`.
-pub(crate) fn read_project_json<T: serde::de::DeserializeOwned>(
-    state: &AppState,
-    project: &str,
-    name: &str,
-) -> Result<T, String> {
-    let path = project_file(state, project, name);
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {}", path.display(), e))?;
-    serde_json::from_str(&text).map_err(|e| format!("{}: {}", path.display(), e))
-}
-
-pub(crate) fn read_chunks_file(state: &AppState, project: &str) -> Result<Vec<Chunk>, String> {
-    read_project_json(state, project, "rag_chunks.json")
-}
-
 // ── Commands: project management ──────────────────────────────────────────────
 
 #[tauri::command]
@@ -1727,10 +1691,6 @@ pub fn save_env_config(
 
 #[derive(Serialize)]
 pub struct StorageInfo {
-    /// "ios", "macos", "windows", "linux".
-    pub platform: String,
-    /// True on the read-only mobile build, which has no pipeline and no editing.
-    pub read_only: bool,
     pub root: String,
     /// Whether the data lives in iCloud Drive or in the local fallback.
     pub using_icloud: bool,
@@ -1738,9 +1698,6 @@ pub struct StorageInfo {
     pub note: Option<String>,
     /// Files iCloud had not downloaded yet when the app started.
     pub pending_downloads: usize,
-    /// Projects actually present on disk, so the mobile app can tell "iCloud has
-    /// not synced yet" apart from "nothing was ever exported".
-    pub available_projects: Vec<String>,
 }
 
 /// Resolve the data root and report what the frontend is working with.
@@ -1755,311 +1712,20 @@ pub async fn init_storage() -> Result<StorageInfo, String> {
         let root = storage::resolve_blocking();
         #[cfg(desktop)]
         refresh_page_indexes_once();
-        // A phone only downloads iCloud files on request. Asking for all of
-        // them here means the tabs find them on disk instead of each one
-        // waiting on its own file.
+        // Older macOS versions keep undownloaded iCloud files as placeholders;
+        // fetching them here means the views find them on disk.
         let pending_downloads =
             storage::ensure_tree(&root.join(MED_DIR), std::time::Duration::from_secs(15));
-        let mut available_projects: Vec<String> =
-            std::fs::read_dir(root.join(MED_DIR).join("projects"))
-                .map(|entries| {
-                    entries
-                        .flatten()
-                        .filter(|e| e.path().is_dir())
-                        .map(|e| e.file_name().to_string_lossy().into_owned())
-                        .collect()
-                })
-                .unwrap_or_default();
-        available_projects.sort();
 
         StorageInfo {
-            platform: std::env::consts::OS.to_string(),
-            read_only: cfg!(mobile),
             root: root.to_string_lossy().into_owned(),
             using_icloud: storage::using_icloud(),
             note: storage::note(),
             pending_downloads,
-            available_projects,
         }
     })
     .await
     .map_err(|e| format!("Kon de opslag niet initialiseren: {}", e))
-}
-
-// ── Commands: guideline text ─────────────────────────────────────────────────
-//
-// Reading the guideline on a phone. guideline.md runs to hundreds of kilobytes,
-// far too much to hand a mobile webview in one piece, so it is served as an
-// outline plus one section at a time.
-
-/// Strip the bold/italic wrapping the PDF conversion leaves on every heading.
-fn clean_heading(raw: &str) -> String {
-    let mut t = raw.trim();
-    loop {
-        let stripped = t
-            .strip_prefix("**")
-            .and_then(|r| r.strip_suffix("**"))
-            .or_else(|| t.strip_prefix('_').and_then(|r| r.strip_suffix('_')))
-            .or_else(|| t.strip_prefix('*').and_then(|r| r.strip_suffix('*')));
-        match stripped {
-            Some(inner) => t = inner.trim(),
-            None => break,
-        }
-    }
-    t.to_string()
-}
-
-/// Nesting depth from a "4.1.3.2." style prefix.
-///
-/// The conversion flattens every heading to `##`, so the numbering the
-/// guideline itself uses is the only structure left to indent by.
-fn heading_depth(title: &str) -> usize {
-    let prefix: String = title
-        .chars()
-        .take_while(|c| c.is_ascii_digit() || *c == '.')
-        .collect();
-    let depth = prefix.split('.').filter(|p| !p.is_empty()).count();
-    depth.clamp(1, 4)
-}
-
-#[derive(Serialize)]
-pub struct GuidelineSection {
-    /// Position in the outline; also what `get_guideline_section` takes.
-    pub index: usize,
-    pub title: String,
-    pub depth: usize,
-    /// Characters of body text, so the UI can skip empty front-matter headings.
-    pub length: usize,
-}
-
-/// Byte ranges of each section's body, in document order.
-fn split_sections(markdown: &str) -> Vec<(String, usize, usize)> {
-    let mut heads: Vec<(String, usize)> = vec![];
-    let mut offset = 0usize;
-    for line in markdown.split_inclusive('\n') {
-        if let Some((_, title)) = is_heading(line) {
-            heads.push((clean_heading(title), offset));
-        }
-        offset += line.len();
-    }
-
-    let mut out = vec![];
-    for (i, (title, start)) in heads.iter().enumerate() {
-        let end = heads.get(i + 1).map(|(_, s)| *s).unwrap_or(markdown.len());
-        out.push((title.clone(), *start, end));
-    }
-    out
-}
-
-fn guideline_path(state: &AppState, project: &str) -> PathBuf {
-    project_file(state, project, "guideline.md")
-}
-
-#[tauri::command]
-pub fn get_guideline_outline(
-    state: State<AppState>,
-    project: String,
-) -> Result<Vec<GuidelineSection>, String> {
-    let path = guideline_path(&state, &project);
-    if !path.exists() {
-        return Ok(vec![]);
-    }
-    let md = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-
-    Ok(split_sections(&md)
-        .into_iter()
-        .enumerate()
-        .map(|(index, (title, start, end))| GuidelineSection {
-            index,
-            depth: heading_depth(&title),
-            length: end.saturating_sub(start),
-            title,
-        })
-        .collect())
-}
-
-#[derive(Serialize)]
-pub struct GuidelineSectionText {
-    pub index: usize,
-    pub title: String,
-    pub markdown: String,
-    pub has_prev: bool,
-    pub has_next: bool,
-}
-
-#[tauri::command]
-pub fn get_guideline_section(
-    state: State<AppState>,
-    project: String,
-    index: usize,
-) -> Result<GuidelineSectionText, String> {
-    let path = guideline_path(&state, &project);
-    let md = std::fs::read_to_string(&path)
-        .map_err(|_| "Geen guideline.md voor dit project.".to_string())?;
-
-    let sections = split_sections(&md);
-    let (title, start, end) = sections
-        .get(index)
-        .cloned()
-        .ok_or_else(|| format!("Sectie {} bestaat niet.", index))?;
-
-    // The heading line itself is part of the range; the UI renders the title
-    // separately, so drop it here rather than showing it twice.
-    let body = md[start..end]
-        .splitn(2, '\n')
-        .nth(1)
-        .unwrap_or("")
-        .trim()
-        .to_string();
-
-    Ok(GuidelineSectionText {
-        index,
-        title,
-        markdown: body,
-        has_prev: index > 0,
-        has_next: index + 1 < sections.len(),
-    })
-}
-
-/// Full-text search across the guideline's sections.
-///
-/// Complements `search_chunks`: that one only sees extracted recommendations,
-/// this one sees the prose around them.
-#[derive(Serialize)]
-pub struct GuidelineHit {
-    pub index: usize,
-    pub title: String,
-    /// Text around the first match, for a result-list preview.
-    pub snippet: String,
-}
-
-#[tauri::command]
-pub fn search_guideline(
-    state: State<AppState>,
-    project: String,
-    query: String,
-) -> Result<Vec<GuidelineHit>, String> {
-    let needle = query.trim().to_lowercase();
-    if needle.is_empty() {
-        return Ok(vec![]);
-    }
-    let path = guideline_path(&state, &project);
-    if !path.exists() {
-        return Ok(vec![]);
-    }
-    let md = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-
-    let mut hits = vec![];
-    for (index, (title, start, end)) in split_sections(&md).into_iter().enumerate() {
-        let body = &md[start..end];
-        let Some(at) = body.to_lowercase().find(&needle) else {
-            continue;
-        };
-
-        // Widen to char boundaries; slicing a UTF-8 string mid-character panics.
-        let from = body[..at].char_indices().rev().nth(60).map(|(i, _)| i).unwrap_or(0);
-        let to = body[at..]
-            .char_indices()
-            .nth(needle.chars().count() + 90)
-            .map(|(i, _)| at + i)
-            .unwrap_or(body.len());
-
-        hits.push(GuidelineHit {
-            index,
-            title,
-            snippet: body[from..to].split_whitespace().collect::<Vec<_>>().join(" "),
-        });
-        if hits.len() >= 60 {
-            break;
-        }
-    }
-    Ok(hits)
-}
-
-// ── Commands: PDF location (mobile) ──────────────────────────────────────────
-
-/// Where a project's PDF sits and which page a recommendation is on.
-///
-/// iOS cannot run PyMuPDF, so it never searches the PDF itself — it reads the
-/// `pdf_pages.json` cache the desktop app already built and synced, and hands
-/// the page number to the Files app.
-#[derive(Serialize)]
-pub struct PdfLocation {
-    pub file_name: String,
-    /// Absolute path, shown so the file stays findable if opening fails.
-    pub path: String,
-    /// Files-app URL for the PDF.
-    pub files_url: String,
-    /// 1-based page for the requested chunk, when the desktop app cached one.
-    pub page: Option<i64>,
-}
-
-#[tauri::command]
-pub fn get_pdf_location(
-    state: State<AppState>,
-    project: String,
-    chunk_id: Option<String>,
-) -> Result<Option<PdfLocation>, String> {
-    let Some(pdf) = project_pdf_path(&state, &project) else {
-        return Ok(None);
-    };
-    // The cache is 0-based (it indexes PyMuPDF pages); readers count from 1.
-    let page = chunk_id
-        .and_then(|id| read_page_cache(&state, &project).get(&id).copied())
-        .map(|p| p + 1);
-
-    Ok(Some(PdfLocation {
-        file_name: pdf
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default(),
-        files_url: format!("shareddocuments://{}", pdf.to_string_lossy()),
-        path: pdf.to_string_lossy().into_owned(),
-        page,
-    }))
-}
-
-/// The project's PDF as raw bytes, for the in-app viewer.
-///
-/// Sent as a binary IPC response rather than JSON: a guideline PDF runs to
-/// ten-odd megabytes, and base64 or a number array would multiply that.
-#[tauri::command]
-pub fn read_project_pdf(
-    state: State<AppState>,
-    project: String,
-) -> Result<tauri::ipc::Response, String> {
-    let pdf = project_pdf_path(&state, &project).ok_or("Geen PDF gevonden voor dit project.")?;
-    if storage::is_pending(&pdf) {
-        return Err(pending_error(&pdf));
-    }
-    let bytes = std::fs::read(&pdf).map_err(|e| format!("{}: {}", pdf.display(), e))?;
-    Ok(tauri::ipc::Response::new(bytes))
-}
-
-// ── Commands: external links (mobile) ────────────────────────────────────────
-
-/// Mobile counterpart of the desktop `open_external`.
-///
-/// iOS has no child processes, so the opener plugin takes the place of `open`.
-/// The same scheme check applies: reference strings come out of a PDF and are
-/// untrusted input.
-#[cfg(mobile)]
-#[tauri::command]
-pub fn open_external(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    use tauri_plugin_opener::OpenerExt;
-
-    let trimmed = url.trim();
-    let lower = trimmed.to_lowercase();
-    let allowed = lower.starts_with("http://")
-        || lower.starts_with("https://")
-        || lower.starts_with("shareddocuments://");
-    if !allowed || trimmed.chars().any(|c| c.is_control()) {
-        return Err("Alleen http(s)-links kunnen geopend worden.".into());
-    }
-
-    app.opener()
-        .open_url(trimmed, None::<&str>)
-        .map_err(|e| format!("Kon niet openen: {}", e))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -2119,55 +1785,6 @@ mod tests {
 
     fn counts(entries: &[CountEntry]) -> Vec<(&str, usize)> {
         entries.iter().map(|e| (e.label.as_str(), e.count)).collect()
-    }
-
-    #[test]
-    fn heading_titles_lose_their_markdown_wrapping() {
-        assert_eq!(clean_heading("**4.1. Patients at risk**"), "4.1. Patients at risk");
-        assert_eq!(clean_heading("_4.1.3.2. Smoking_"), "4.1.3.2. Smoking");
-        assert_eq!(clean_heading("  Plain title  "), "Plain title");
-    }
-
-    #[test]
-    fn heading_depth_follows_the_guideline_numbering() {
-        // Every heading converts to "##", so the number prefix is the only
-        // structure left to indent the outline by.
-        assert_eq!(heading_depth("4. Prevention"), 1);
-        assert_eq!(heading_depth("4.1. Patients at risk"), 2);
-        assert_eq!(heading_depth("4.1.3.2. Smoking"), 4);
-        assert_eq!(heading_depth("Abbreviations"), 1);
-        // Deeper than the outline renders, clamped rather than dropped.
-        assert_eq!(heading_depth("1.2.3.4.5. Deep"), 4);
-    }
-
-    #[test]
-    fn sections_span_from_one_heading_to_the_next() {
-        let md = "intro line\n## **1. First**\nbody one\n## **2. Second**\nbody two\n";
-        let sections = split_sections(md);
-
-        assert_eq!(sections.len(), 2);
-        assert_eq!(sections[0].0, "1. First");
-        assert_eq!(&md[sections[0].1..sections[0].2], "## **1. First**\nbody one\n");
-        assert_eq!(sections[1].0, "2. Second");
-        // The last section runs to the end of the document.
-        assert_eq!(sections[1].2, md.len());
-    }
-
-    #[test]
-    fn guideline_snippets_never_split_a_utf8_character() {
-        // Accented text around the match would panic a byte-index slice.
-        let body = "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé                     cardiomyopathie ééééééééééééééééééééééééééééééééééééé";
-        let needle = "cardiomyopathie";
-        let at = body.to_lowercase().find(needle).unwrap();
-
-        let from = body[..at].char_indices().rev().nth(60).map(|(i, _)| i).unwrap_or(0);
-        let to = body[at..]
-            .char_indices()
-            .nth(needle.chars().count() + 90)
-            .map(|(i, _)| at + i)
-            .unwrap_or(body.len());
-
-        assert!(body[from..to].contains(needle));
     }
 
     #[test]
