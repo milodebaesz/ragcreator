@@ -1,8 +1,7 @@
 # RAGCreator voor iOS (native)
 
-SwiftUI-versie van de iPhone-app. Leest dezelfde bestanden als de Tauri-iOS-app
-uit de iCloud-container `iCloud.com.ragcreator.app` (zie `docs/IOS.md`); de
-desktop-app schrijft ze. Er is geen eigen Rust- of web-code.
+De iPhone-app, native in SwiftUI. Leest de bestanden die de desktop-app in de
+iCloud-container `iCloud.com.ragcreator.app` schrijft (zie `docs/IOS.md`).
 
 ```
 ios/
@@ -11,10 +10,8 @@ ios/
   RAGCreator/Views/        schermen
 ```
 
-Bundle-ID `com.ragcreator.app`, naam "RAGCreator": dezelfde als de oude
-Tauri-iOS-app, die hij daarmee vervangt. De Tauri-iOS-scripts heten nu
-`tauri-ios:*`; draai die niet meer op een toestel, want ze zetten de oude app
-over deze heen.
+Bundle-ID `com.ragcreator.app`, naam "RAGCreator". Hij heeft de eerdere
+Tauri-iOS-app (webview) vervangen, die uit de repo verwijderd is.
 
 ## Bouwen
 
