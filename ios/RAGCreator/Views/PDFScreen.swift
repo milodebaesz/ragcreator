@@ -27,9 +27,7 @@ struct PDFScreen: View {
                 ProgressView("PDF laden…")
             }
         }
-        .navigationTitle(showsProjectInTitle || document == nil
-                         ? project
-                         : "Pagina \(currentPage) van \(document?.pageCount ?? 0)")
+        .navigationTitle(showsProjectInTitle || document == nil ? project : pageTitle)
         .toolbar {
             if showsProjectInTitle, let document {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -41,6 +39,17 @@ struct PDFScreen: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .task(id: project) { await load() }
+    }
+
+    /// "Pagina 12 van 61", plus the number printed on the page when the PDF
+    /// numbers its pages differently (a journal reprint starting at 543).
+    private var pageTitle: String {
+        guard let document else { return project }
+        var title = "Pagina \(currentPage) van \(document.pageCount)"
+        if let label = document.page(at: currentPage - 1)?.label, !label.isEmpty, label != "\(currentPage)" {
+            title += " · p. \(label)"
+        }
+        return title
     }
 
     private func load() async {
@@ -63,15 +72,14 @@ struct PDFKitView: UIViewRepresentable {
     @Binding var currentPage: Int
 
     func makeUIView(context: Context) -> PDFView {
-        let view = PDFView()
+        let view = JumpingPDFView()
         view.displayMode = .singlePageContinuous
         view.displayDirection = .vertical
         view.autoScales = true
         view.pageShadowsEnabled = true
         view.document = document
-        if let startPage, let target = document.page(at: max(0, startPage - 1)) {
-            // After layout, otherwise PDFKit scrolls back to the top.
-            DispatchQueue.main.async { view.go(to: target) }
+        if let startPage {
+            view.pendingPage = document.page(at: max(0, min(startPage, document.pageCount) - 1))
         }
         context.coordinator.observe(view)
         return view
@@ -101,6 +109,34 @@ struct PDFKitView: UIViewRepresentable {
         deinit {
             if let token { NotificationCenter.default.removeObserver(token) }
         }
+    }
+}
+
+/// A PDFView that opens on a given page.
+///
+/// A jump made right after creation gets lost: the view has no final size
+/// yet (it is still sliding in), and when autoScales fits the page to the
+/// width on the first real layout, PDFKit scrolls back to the top. So the
+/// jump waits for a layout with a real size, and is repeated until the page
+/// actually is the current one.
+final class JumpingPDFView: PDFView {
+    var pendingPage: PDFPage?
+    private var attempts = 0
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard let target = pendingPage, bounds.width > 0, bounds.height > 0, document != nil else { return }
+        attempts += 1
+        if currentPage == target || attempts > 6 {
+            pendingPage = nil
+            return
+        }
+        // A destination at the page's top edge, not just the page: go(to: page)
+        // leaves the end of the previous page in view.
+        let top = target.bounds(for: displayBox).maxY
+        go(to: PDFDestination(page: target, at: CGPoint(x: 0, y: top)))
+        // The layout pass that follows a jump does not always come by itself.
+        DispatchQueue.main.async { [weak self] in self?.setNeedsLayout() }
     }
 }
 
